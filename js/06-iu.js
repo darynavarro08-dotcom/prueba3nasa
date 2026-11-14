@@ -15,29 +15,38 @@ const toolBtn = (x) => (x.tool === 'dibujo' ? `<button class="btn btn-soft btn-s
   : x.tool === 'bitacora' ? `<button class="btn btn-soft btn-sm" data-act="write" data-id="${x.id}">${icon('book')}Escribir en la bitácora</button>` : '');
 const go = (h) => { if (location.hash !== '#' + h) location.hash = h; else route(); };
 
-/* ===== Marco: navegación, perfil, campana, simulador ===== */
+/* ===== Marco: navegación, perfil, campana, mediciones ===== */
 const NAV = [['inicio', 'Inicio', 'home'], ['mente', 'Mente', 'smile'], ['bitacora', 'Bitácora', 'book'], ['datos', 'Datos', 'chart'], ['equipo', 'Equipo', 'users'], ['guias', 'Guías', 'buoy']];
 function renderShell() {
   $('#nav').innerHTML = NAV.map(([id, label, ic]) => `<a href="#${id}" data-nav="${id}">${icon(ic)}<span>${label}</span></a>`).join('');
-  $('#sim-btn').innerHTML = `${icon('sliders')}<span>Demo</span>`;
+  $('#med-btn').innerHTML = `${icon('plus')}<span>Registrar medición</span>`;
   $('#bell-btn').innerHTML = `${icon('bell')}<span class="badge" id="bell-n" hidden></span>`;
-  renderWho(); renderMision(); renderSim(); renderBell();
+  renderWho(); renderMision(); renderBell();
 }
 function renderWho() { const a = S.profile; $('#who').innerHTML = `${avatar(a, true)}<span class="who-t"><b>${esc(a.name)}</b><small>${esc(a.role)}</small></span>${icon('down')}`; }
 function renderMision() { setText('#mision', `${MISSION.name} · Día ${MISSION.day} de ${MISSION.total} · Hora de a bordo ${fTime(new Date())}`); }
-function renderScenChip() {
-  const sc = RT[S.profile.id].scen, el = $('#scen-chip');
-  el.hidden = sc === 'normal';
-  if (sc !== 'normal') el.textContent = 'Simulando: ' + low(SCEN[sc].label);
+
+/* ----- Escribir una medición propia ----- */
+const MED_FIELDS = [
+  ['temp', 'Temperatura (°C)', '36.6'], ['hr', 'Pulso (lpm)', '62'], ['rr', 'Respiración (rpm)', '14'],
+  ['spo2', 'Oxígeno en sangre (%)', '98'], ['sleepH', 'Horas que dormiste anoche', '7.5'],
+];
+const medLine = (m) => MED_FIELDS.filter(([k]) => m[k] != null).map(([k, l]) => `${l.replace(/ \(.*\)| que dormiste anoche/, '').toLowerCase()} ${k === 'sleepH' ? f1(m[k]) + ' h' : k === 'temp' ? f1(m[k]) : f0(m[k])}`).join(' · ');
+function medListHtml() {
+  const list = MEDS[S.profile.id].slice(-5).reverse();
+  return list.length ? list.map((m) => `<li><span><b>${ago(m.t)}</b>${m.state === 'ejercicio' ? ' · tras ejercicio' : ''}<small>${esc(medLine(m))}</small></span><button type="button" class="btn btn-ghost btn-sm" data-act="med-del" data-t="${m.t}" aria-label="Borrar esta medición">${icon('trash')}</button></li>`).join('')
+    : '<li><span>Aún no has anotado ninguna medición.</span></li>';
 }
-function renderSim() {
-  const a = S.profile, rt = RT[a.id];
-  setHtml('#sim', `<div class="sim-h"><h2>Simulador</h2><button class="icon-btn" data-act="sim-toggle" aria-label="Cerrar simulador">${icon('x')}</button></div>
-    <p class="hint">Esta versión no tiene un sensor real conectado. Elige qué registra el sensor de <b>${esc(a.short)}</b> y mira cómo responde Stellar Health.</p>
-    <div class="opts" role="radiogroup" aria-label="Escenario del sensor">${Object.keys(SCEN).map((id) => `<button class="scen" role="radio" aria-checked="${rt.scen === id}" data-act="scen" data-id="${id}"><b>${esc(SCEN[id].label)}</b><small>${esc(SCEN[id].desc)}</small></button>`).join('')}</div>
-    <label class="switch"><input type="checkbox" id="demo-on" ${settings.demo ? 'checked' : ''}><span><b>Tiempos de demostración</b><br><span class="hint">Recordatorios cada 90 segundos y aviso por alerta continua a los 45 segundos. Sin esto: según el plan de cada tripulante y a los 10 minutos.</span></span></label>
-    <div class="row"><button class="btn btn-soft btn-sm" data-act="send-act">Proponer una actividad</button><button class="btn btn-soft btn-sm" data-act="send-check">Pedir un check-in</button></div>`);
-  renderScenChip();
+function openMedicion() {
+  const a = S.profile;
+  S.medState = 'reposo';
+  openSheet('med', { ic: 'pulse', title: 'Registrar una medición',
+    body: `<p>Escribe los valores que mediste tú, con tu termómetro, oxímetro o contando el pulso. Puedes dejar vacío lo que no mediste.</p>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">${MED_FIELDS.map(([k, l, ph]) => `<div><label class="lbl" for="m-${k}">${l}</label><input type="text" inputmode="decimal" id="m-${k}" placeholder="${ph}" autocomplete="off"></div>`).join('')}</div>
+      <div><p class="lbl" id="l-mst">¿Cómo estabas al medir?</p><div class="chips" role="radiogroup" aria-labelledby="l-mst" id="m-state">${chipSet('med-state', 'state', Object.entries(MED_STATES), (k) => S.medState === k, true)}</div></div>
+      <p class="hint" id="m-err" role="alert"></p>
+      <div class="box"><h3>Últimas mediciones de ${esc(a.short)}</h3><ul class="drivers" id="med-list">${medListHtml()}</ul></div>`,
+    foot: `${footClose('Cancelar')}<button class="btn btn-primary" data-act="med-save">${icon('check')}Guardar medición</button>` });
 }
 const noteIcon = (n) => (n.type === 'alerta' ? LEVELS[n.level].ic : n.type === 'prevencion' ? 'shield' : n.type === 'actividad' ? 'star' : n.type === 'checkin' ? 'smile' : n.type === 'equipo' ? 'users' : n.level === 'ok' ? 'check' : 'info');
 const noteCls = (n) => (n.type === 'actividad' || n.type === 'checkin' ? 'n-act' : '');
@@ -78,12 +87,10 @@ function crewBlock(a, rt) {
   if (ep.count) {
     const left = Math.max(0, ep.count.until - now);
     return { left: `${Math.ceil(left / 1000)} s`, pct: 100 - (left / T_COUNT) * 100,
-      html: `<p><b>Avisando a la tripulación en <span data-dyn="left"></span></b> porque ${ep.count.reason === 'grave' ? 'la emergencia es grave' : 'la alerta continúa'}.</p><div class="bar"><i data-dyn="bar"></i></div><div class="row"><button class="btn btn-crit btn-sm" data-act="crew-now">Avisar ahora</button><button class="btn btn-ghost btn-sm" data-act="crew-cancel">No avisar: estoy bien</button></div>` };
+      html: `<p><b>Avisando a la tripulación en <span data-dyn="left"></span></b> porque la emergencia es grave.</p><div class="bar"><i data-dyn="bar"></i></div><div class="row"><button class="btn btn-crit btn-sm" data-act="crew-now">Avisar ahora</button><button class="btn btn-ghost btn-sm" data-act="crew-cancel">No avisar: estoy bien</button></div>` };
   }
   if (ep.cancelLv >= lv) return { html: `<p>No se avisó a la tripulación. Si empeora, te lo volveremos a proponer.</p><div class="row"><button class="btn btn-ghost btn-sm" data-act="crew-now">Avisar ahora</button></div>` };
-  const left = Math.max(0, tCont() - (now - ep.start));
-  return { left: mmss(left), pct: (1 - left / tCont()) * 100,
-    html: `<p>Si la alerta continúa, avisaremos a la tripulación en <b data-dyn="left"></b>.</p><div class="bar"><i data-dyn="bar"></i></div><div class="row"><button class="btn btn-ghost btn-sm" data-act="crew-now">Avisar ahora</button></div>` };
+  return { html: `<p>Si te sientes mal o el valor no baja al medir de nuevo, avisa a la tripulación.</p><div class="row"><button class="btn btn-ghost btn-sm" data-act="crew-now">Avisar ahora</button></div>` };
 }
 function paintDyn(root, blk) {
   if (!root) return;
@@ -128,9 +135,7 @@ const TILES = [
   { k: 'rr', name: 'Respiración', unit: 'rpm', ic: 'wind' },
   { k: 'spo2', name: 'Oxígeno en sangre', unit: '% SpO₂', ic: 'drop' },
   { k: 'sleep', name: 'Sueño de anoche', unit: 'h', ic: 'moon' },
-  { k: 'act', name: 'Movimiento', unit: 'cuentas/min', ic: 'watch' },
 ];
-const STATE_TXT = { reposo: 'En reposo', ejercicio: 'Ejercicio', recuperacion: 'Recuperación' };
 function enfoqueHtml(kind, st) {
   return `${ring(st.index, st.level, kind === 'cuerpo' ? 'pulse' : 'smile')}<div class="enf-t"><p class="enf-name">${kind === 'cuerpo' ? 'Cuerpo' : 'Mente'}</p><p class="enf-idx"><b>${st.index}</b><span>de 100</span></p></div>${pill(st.level)}<p class="enf-why">${esc(st.why)}</p>`;
 }
@@ -170,7 +175,7 @@ VIEWS.inicio = () => {
     </div>
   </section>
   <section aria-labelledby="h-vit">
-    <div class="sec-h"><h2 id="h-vit">Signos vitales ahora</h2><p class="sensor" id="sensor"></p></div>
+    <div class="sec-h"><h2 id="h-vit">Tus últimas mediciones</h2><p class="sensor" id="sensor"></p><button class="btn btn-soft btn-sm" data-act="med-open">${icon('plus')}Registrar medición</button></div>
     <div class="vitals">${TILES.map((t) => `<article class="tile"><div class="tile-h"><span class="tile-ic">${icon(t.ic)}</span><h3>${t.name}</h3></div>
       <p class="tile-val"><span class="num" id="tv-${t.k}">–</span><span class="unit">${t.unit}</span><span class="tile-p" id="tp-${t.k}"></span></p>
       <div id="sp-${t.k}"></div><p class="tile-foot" id="tf-${t.k}"></p></article>`).join('')}</div>
@@ -180,43 +185,41 @@ VIEWS.inicio = () => {
     <section aria-labelledby="h-ani"><div class="sec-h"><h2 id="h-ani">Para tu ánimo</h2><p class="hint" id="next-rem"></p></div><div id="sugerencia"></div></section>
   </div>`;
 };
-function liveSeries(k) { return RT[S.profile.id].buf.map((s) => ({ t: s.t, v: s[k] })); }
+const daySeries = (a, k, n) => H[a.id].days.slice(-n).map((d) => ({ t: d.date, v: d[k] })).filter((p) => p.v != null);
 AFTER.inicio = () => {
   const a = S.profile, st = M[a.id].stats;
-  const xf = (t) => { const s = Math.round((Date.now() - t) / 1000); return s < 3 ? 'ahora' : `hace ${s} s`; };
-  const mk = (k, fmt, unit, minSpan, band, extra) => { CH[k] = makeChart($('#sp-' + k), { compact: true, data: liveSeries(k), fmt, unit, minSpan, band, xfmt: xf, aria: 'Últimos tres minutos', ...extra }); };
+  const xf = (t) => fDay(t);
+  const mk = (k, fmt, unit, minSpan, band, extra) => { CH[k] = makeChart($('#sp-' + k), { compact: true, data: daySeries(a, k, 14), fmt, unit, minSpan, band, xfmt: xf, aria: 'Últimos 14 días', ...extra }); };
   mk('temp', f1, '°C', 0.8, st.temp);
   mk('hr', f0, 'lpm', 16, st.hr);
   mk('rr', f0, 'rpm', 7, st.rr);
   mk('spo2', f0, '%', 4, { lo: st.spo2.lo, hi: Math.min(100, st.spo2.hi) }, { yMax: 100 });
-  mk('act', f0, 'cuentas/min', 200, null, { yMin: 0 });
   CH.sleep = makeChart($('#sp-sleep'), { compact: true, kind: 'bar', data: sleepSeries(a, 7), fmt: f1, unit: 'h', yMin: 0, refs: [{ v: a.need }], xfmt: (t) => 'noche del ' + fDay(addDays(t, -1)), aria: 'Horas de sueño de las últimas 7 noches' });
   setHtml('#sugerencia', suggestionHtml());
   startSky();
   renderInicioLive();
 };
 function sleepSeries(a, n) {
-  const ds = H[a.id].days.filter((d) => d.sleepH != null).slice(-n).map((d) => ({ t: d.date, v: d.sleepH }));
-  const o = nightOverride(a);
-  if (o && ds.length) ds[ds.length - 1].v = o.sleepH;
-  return ds;
+  return H[a.id].days.filter((d) => d.sleepH != null).slice(-n).map((d) => ({ t: d.date, v: d.sleepH }));
 }
 function renderInicioLive() {
-  const a = S.profile, rt = RT[a.id], last = rt.buf[rt.buf.length - 1], lv = rt.last ? rt.last.lv : {}, s = M[a.id].stats, st = S.state;
+  const a = S.profile, rt = RT[a.id], rd = rt.reading, lv = rt.last ? rt.last.lv : {}, s = M[a.id].stats, st = S.state;
+  const meds = MEDS[a.id], lastMed = meds[meds.length - 1];
   setText('#resumen', summaryText(st));
   setHtml('#enf-cuerpo', enfoqueHtml('cuerpo', st.body));
   setHtml('#enf-mente', enfoqueHtml('mente', st.mind));
-  setText('#sensor', `Sensor de ${a.short} conectado`);
+  setText('#sensor', lastMed ? `Última medición de ${a.short}: ${ago(lastMed.t)}` : `${a.short} aún no ha anotado mediciones`);
   const set = (k, val, pl, foot) => { setText('#tv-' + k, val); setHtml('#tp-' + k, pl); setText('#tf-' + k, foot); };
-  const rest = last.state === 'reposo';
-  set('temp', f1(last.temp), pill(lv.temp || 'ok'), `Tu rango habitual: ${f1(s.temp.lo)} a ${f1(s.temp.hi)}`);
-  set('hr', f0(last.hr), pill(lv.hr || 'ok'), rest ? `Tu rango en reposo: ${f0(s.hr.lo)} a ${f0(s.hr.hi)}` : 'Con ejercicio es normal que suba');
-  set('rr', f0(last.rr), pill(lv.rr || 'ok'), rest ? `Tu rango en reposo: ${f0(s.rr.lo)} a ${f0(s.rr.hi)}` : 'Con ejercicio es normal que suba');
-  set('spo2', f0(last.spo2), pill(lv.spo2 || 'ok'), `Tu rango habitual: ${f0(s.spo2.lo)} a ${f0(Math.min(100, s.spo2.hi))}`);
+  const rest = !rd || rd.state === 'reposo';
+  const none = 'Anota una medición para verlo aquí';
+  const tile = (k, fmt, foot) => set(k, rd && rd[k] != null ? fmt(rd[k]) : '–', rd && rd[k] != null ? pill(lv[k] || 'ok') : '', rd && rd[k] != null ? foot : none);
+  tile('temp', f1, `Tu rango habitual: ${f1(s.temp.lo)} a ${f1(s.temp.hi)}`);
+  tile('hr', f0, rest ? `Tu rango en reposo: ${f0(s.hr.lo)} a ${f0(s.hr.hi)}` : 'Con ejercicio es normal que suba');
+  tile('rr', f0, rest ? `Tu rango en reposo: ${f0(s.rr.lo)} a ${f0(s.rr.hi)}` : 'Con ejercicio es normal que suba');
+  tile('spo2', f0, `Tu rango habitual: ${f0(s.spo2.lo)} a ${f0(Math.min(100, s.spo2.hi))}`);
   const n = lastNight(a), si = (INS[a.id] || []).find((i) => i.id === 'sueno' || i.id === 'eficiencia');
-  set('sleep', f1(n.sleepH), pill(si ? si.level : 'ok'), `Eficiencia ${f0(n.eff)} % · ${n.awak} ${n.awak === 1 ? 'despertar' : 'despertares'}`);
-  set('act', f0(last.act), `<span class="tag">${STATE_TXT[last.state]}</span>`, 'Actigrafía: movimiento de la muñeca');
-  ['temp', 'hr', 'rr', 'spo2', 'act'].forEach((k) => { if (CH[k]) CH[k].update(liveSeries(k)); });
+  set('sleep', f1(n.sleepH), pill(si ? si.level : 'ok'), n.eff == null ? 'Anotado por ti' : `Eficiencia ${f0(n.eff)} % · ${n.awak} ${n.awak === 1 ? 'despertar' : 'despertares'}`);
+  ['temp', 'hr', 'rr', 'spo2'].forEach((k) => { if (CH[k]) CH[k].update(daySeries(a, k, 14)); });
   if (CH.sleep) CH.sleep.update(sleepSeries(a, 7));
   setHtml('#prev', prevHtml(st));
   setText('#next-rem', nextRemText());
@@ -255,8 +258,7 @@ function lastCheckinText() {
 }
 function remInfoText() {
   const p = planNow(), now = Date.now();
-  return (settings.demo ? 'Tiempos de demostración activos: los recordatorios llegan cada 90 segundos. Puedes cambiarlo en Demo. ' : '') +
-    `Tu plan pide ${p.chkDay} check-ins y ${p.actsDay} actividades al día. Próxima actividad en ${mmss(SCHED.nextAct - now)} y próximo check-in en ${mmss(SCHED.nextChk - now)}.`;
+  return `Tu plan pide ${p.chkDay} check-ins y ${p.actsDay} actividades al día. Próxima actividad en ${mmss(SCHED.nextAct - now)} y próximo check-in en ${mmss(SCHED.nextChk - now)}.`;
 }
 function moodSeries(a, n) { return H[a.id].days.slice(-n).map((d) => ({ t: d.date, v: moodOf(a, d) })).filter((p) => p.v != null); }
 VIEWS.mente = () => `<header class="vh"><h1>Mente</h1><p>Cómo estás hoy y qué te ayuda en esta etapa de la misión.</p></header>
@@ -322,7 +324,7 @@ const draftChipsHtml = () => ({
   mood: MOODS.map((m) => `<button class="face" role="radio" aria-checked="${S.draft.mood === m.v}" aria-label="${m.label}" title="${m.label}" data-act="entry-mood" data-v="${m.v}">${faceSvg(m.v)}</button>`).join(''),
 });
 function refreshDraft() { const h = draftChipsHtml(); setHtml('#ent-tags', h.tags); setHtml('#ent-sym', h.syms); setHtml('#ent-mood', h.mood); }
-VIEWS.bitacora = () => `<header class="vh"><h1>Bitácora</h1><p>Tu registro personal de lo que el sensor no ve: síntomas, cómo dormiste, cómo va el trabajo o lo que quieras recordar.</p></header>
+VIEWS.bitacora = () => `<header class="vh"><h1>Bitácora</h1><p>Tu registro personal de lo que tus mediciones no muestran: síntomas, cómo dormiste, cómo va el trabajo o lo que quieras recordar.</p></header>
   <section class="card" aria-label="Nueva entrada">
     <label class="lbl" for="ent-text">Nueva entrada</label>
     <textarea id="ent-text" rows="3" maxlength="2000" placeholder="Escribe aquí lo que quieras registrar…"></textarea>
@@ -396,24 +398,18 @@ function modelHtml(a) {
       <ol class="apoyo" style="list-style:decimal;padding-left:20px">
         <li><b>Límites de seguridad.</b> Si un signo cruza un valor peligroso, hay alerta o emergencia en el momento, con su guía.</li>
         <li><b>Desviación personal.</b> Un valor normal para otros puede ser raro para ti. Si sales de tu rango aprendido, hay un aviso de atención.</li>
-        <li><b>Tendencias.</b> Cada minuto revisa los últimos días. Una subida lenta de temperatura o pulso, o noches cortas seguidas, se avisan antes de que sean un problema.</li>
-        <li><b>Contexto.</b> La actigrafía dice si estás en reposo o haciendo ejercicio. Pulso alto con mucho movimiento no es una alerta.</li>
-        <li><b>Persistencia.</b> Una emergencia grave, o una alerta que continúa, se comunica a la tripulación.</li>
+        <li><b>Tendencias.</b> Revisa los últimos días. Una subida lenta de temperatura o pulso, o noches cortas seguidas, se avisan antes de que sean un problema.</li>
+        <li><b>Contexto.</b> Al anotar una medición dices si estabas en reposo o justo después de hacer ejercicio. Pulso alto tras el esfuerzo no es una alerta.</li>
+        <li><b>Persistencia.</b> Una emergencia grave se comunica a la tripulación, y tú puedes avisar cuando quieras.</li>
       </ol>
     </details>`;
 }
 VIEWS.datos = () => {
   const a = S.profile, n = settings.range;
-  return `<header class="vh"><h1>Datos</h1><p>El archivo de lo que registró el sensor de ${esc(a.short)} y el modelo personal que Stellar Health aprendió con esos datos.</p></header>
+  return `<header class="vh"><h1>Datos</h1><p>El archivo de las mediciones que ${esc(a.short)} ha anotado y el modelo personal que Stellar Health aprendió con esos datos. Los días anteriores a tus primeras mediciones son datos de ejemplo.</p></header>
   <section aria-labelledby="h-arch">
     <div class="sec-h"><h2 id="h-arch">Archivo</h2><div class="chips" role="group" aria-label="Periodo">${[7, 14, 30].map((d) => `<button class="chip" data-act="range" data-n="${d}" aria-pressed="${n === d}">${d} días</button>`).join('')}</div></div>
     <div class="charts">${SERIES.map((s) => `<article class="ccard"><div class="ccard-h"><span class="tile-ic${s.mind ? ' mind' : ''}">${icon(s.ic)}</span><h3>${s.name}</h3><span class="ccard-v" id="cv-${s.k}"></span></div><div id="ch-${s.k}"></div></article>`).join('')}</div>
-  </section>
-  <section aria-labelledby="h-acto">
-    <div class="sec-h"><h2 id="h-acto">Actigrafía: movimiento y sueño</h2><p class="hint">Últimos ${Math.min(n, 14)} días, una fila por día</p></div>
-    <div class="ccard"><div id="acto"></div>
-      <p class="legend"><span><i style="background:var(--body)"></i>Movimiento de la muñeca (más alto, más movimiento)</span><span><i style="background:var(--mind);opacity:.3"></i>Periodo de sueño</span></p>
-      <p class="hint">El sueño se calcula a partir del movimiento: cada minuto se puntúa con una ventana de 7 minutos (método de Cole-Kripke). Minutos seguidos con muy poco movimiento cuentan como sueño.</p></div>
   </section>
   <section aria-labelledby="h-tab">
     <div class="sec-h"><h2 id="h-tab">Registro diario</h2><div class="row"><button class="btn btn-ghost btn-sm" data-act="csv-copy">${icon('copy')}Copiar como CSV</button>${S.dl ? `<button class="btn btn-ghost btn-sm" data-act="csv-save">${icon('download')}Descargar CSV</button>` : ''}</div></div>
@@ -426,7 +422,6 @@ AFTER.datos = () => {
   const a = S.profile, n = settings.range, st = M[a.id].stats, days = H[a.id].days.slice(-n);
   SERIES.forEach((s) => {
     let data = days.map((d) => ({ t: d.date, v: s.k === 'mood' ? moodOf(a, d) : d[s.k] })).filter((p) => p.v != null);
-    if (s.k === 'sleepH') { const o = nightOverride(a); if (o && data.length) data[data.length - 1].v = o.sleepH; }
     const band = s.k === 'mood' ? { lo: Math.max(1, st.mood.lo), hi: Math.min(5, st.mood.hi) } : s.k === 'spo2' ? { lo: st.spo2.lo, hi: Math.min(100, st.spo2.hi) } : { lo: st[s.k].lo, hi: st[s.k].hi };
     const refs = [];
     if (s.k === 'temp' && Math.max(...data.map((p) => p.v)) >= 37.05) refs.push({ v: 37.5, label: 'atención general' });
@@ -437,7 +432,6 @@ AFTER.datos = () => {
       xfmt: s.k === 'sleepH' ? (t) => 'noche del ' + fDay(addDays(t, -1)) : fDay, aria: `${s.name} de ${a.short} en los últimos ${n} días` });
     if (s.k === 'sleepH') CH[s.k].update(data, { xfmt: fDay, tipx: true });
   });
-  CH.acto = makeActogram($('#acto'), a, Math.min(n, 14));
   setHtml('#tabla', tableHtml(a, n));
   setHtml('#modelo', modelHtml(a));
 };
@@ -465,7 +459,7 @@ function crewAlertsHtml() {
 }
 const shareNote = () => (Store.cloudAlerts ? 'Las alertas se comparten en vivo con quien abra esta página con permiso para usarla. Cada persona elige a qué tripulante representa.' : 'Sin conexión a una cuenta: las alertas se ven solo en este dispositivo. Para ver cómo las recibe otro tripulante, usa «Ver como».');
 VIEWS.equipo = () => `<header class="vh"><h1>Equipo</h1><p>El estado general de cada tripulante y las alertas que se comparten con todos. Las notas y los registros de ánimo siguen siendo privados.</p></header>
-  <section aria-labelledby="h-crew"><div class="sec-h"><h2 id="h-crew">Tripulación de ejemplo</h2><p class="hint">Cuatro perfiles simulados para probar la app</p></div><div class="crew" id="crew-list"></div></section>
+  <section aria-labelledby="h-crew"><div class="sec-h"><h2 id="h-crew">Perfiles de ejemplo</h2><p class="hint">Cada perfil anota sus propias mediciones</p></div><div class="crew" id="crew-list"></div></section>
   <section aria-labelledby="h-cal"><div class="sec-h"><h2 id="h-cal">Alertas de la tripulación</h2><div class="row"><button class="btn btn-crit btn-sm" data-act="sos">${icon('send')}Pedir ayuda</button><button class="btn btn-ghost btn-sm" data-act="alerts-clear">Borrar las resueltas</button></div></div>
     <div class="panel" id="calerts"></div><p class="note" id="share-note" style="margin-top:10px"></p></section>`;
 function refreshEquipo() { setHtml('#crew-list', crewListHtml()); setHtml('#calerts', crewAlertsHtml()); setText('#share-note', shareNote()); }
@@ -500,7 +494,6 @@ function route() {
 }
 function renderLive() {
   renderAlertSlot();
-  renderScenChip();
   if (S.sheet === 'emer') renderEmCrew();
   if (S.view === 'inicio') renderInicioLive();
   else if (S.view === 'equipo') refreshEquipo();

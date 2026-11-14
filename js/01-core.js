@@ -105,5 +105,5 @@ const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
 };
-const settings = Object.assign({ profile: 'amara', demo: true, freq: 'plan', train: 'base', range: 14 }, LS.get('sh.ajustes.v1', {}) || {});
+const settings = Object.assign({ profile: 'amara', freq: 'plan', train: 'base', range: 14 }, LS.get('sh.ajustes.v1', {}) || {});
 const saveSettings = () => LS.set('sh.ajustes.v1', settings);

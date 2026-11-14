@@ -5,50 +5,76 @@ const S = {
   seen: {}, chk: { mood: null, tension: null }, draft: { tags: new Set(), syms: new Set(), mood: null },
   entFilter: 'todo', actFilter: 'todas', suggestion: null, recent: [], planSalt: 0, tableOpen: false, delAsk: null,
 };
-const TICK = 2000, BUF = 90, T_COUNT = 10000;
-const tCont = () => (settings.demo ? 45000 : 600000);
+const TICK = 2000, T_COUNT = 10000, MAX_MED = 200, MED_FRESH = 12 * 3600e3;
 const isRestTime = () => { const m = minOfDay(new Date()); return m >= 1335 || m < 360; };
 
-/* ===== Sensor en vivo (simulado) ===== */
+/* ===== Mediciones escritas por el usuario =====
+   Cada tripulante anota los valores que midió por su cuenta. Se guardan en este dispositivo. */
+const K_MED = 'sh.mediciones.v1';
+const MED_LIMITS = { temp: [30, 43], hr: [20, 250], rr: [4, 80], spo2: [50, 100], sleepH: [0, 16] };
+const MED_STATES = { reposo: 'En reposo', ejercicio: 'Justo después de hacer ejercicio' };
+function cleanMed(m) {
+  if (!m || typeof m !== 'object' || !isFinite(m.t)) return null;
+  const out = { t: m.t, state: m.state === 'ejercicio' ? 'ejercicio' : 'reposo' };
+  for (const k of Object.keys(MED_LIMITS)) out[k] = num(m[k], ...MED_LIMITS[k]);
+  return ['temp', 'hr', 'rr', 'spo2', 'sleepH'].some((k) => out[k] != null) ? out : null;
+}
+function loadMeds() {
+  const saved = LS.get(K_MED, {}) || {}, out = {};
+  CREW.forEach((a) => { out[a.id] = (Array.isArray(saved[a.id]) ? saved[a.id] : []).map(cleanMed).filter(Boolean).slice(-MAX_MED); });
+  return out;
+}
+const MEDS = loadMeds();
+const saveMeds = () => LS.set(K_MED, MEDS);
 function newRuntime(a) {
-  const rt = { scen: 'normal', off: { temp: 0, hr: 0, rr: 0, spo2: 0 }, ar: { temp: 0, hr: 0, rr: 0, spo2: 0, act: 0 }, buf: [], slots: {}, ep: null, recoverUntil: 0, ticks: 0, last: null };
-  const now = Date.now();
-  for (let i = BUF; i > 0; i--) rt.buf.push(sample(a, rt, now - i * TICK));
-  return rt;
+  return { slots: {}, ep: null, last: null, reading: null, readingAt: null };
 }
-function sample(a, rt, t) {
-  const g = () => gauss(Math.random);
-  const sc = SCEN[rt.scen] || SCEN.normal;
-  const d = H[a.id].today;
-  const rest = { temp: d.temp, hr: d.hr, rr: d.rr, spo2: d.spo2 };
-  const RATE = { temp: 0.14, hr: 0.22, rr: 0.22, spo2: 0.17 };
-  for (const k of ['temp', 'hr', 'rr', 'spo2']) {
-    let tgt = 0;
-    if (sc.abs && sc.abs[k] != null) tgt = sc.abs[k] - rest[k];
-    else if (sc.d && sc.d[k]) tgt = sc.d[k];
-    rt.off[k] += (tgt - rt.off[k]) * RATE[k];
+/* Lo último que midió el usuario para cada indicador (cada medición puede traer solo algunos) */
+function currentReading(a) {
+  const out = { t: null, state: 'reposo' };
+  for (const m of MEDS[a.id].slice().reverse()) {
+    if (out.t == null) { out.t = m.t; out.state = m.state; }
+    for (const k of ['temp', 'hr', 'rr', 'spo2']) if (out[k] == null && m[k] != null && m.t >= out.t - MED_FRESH) out[k] = m[k];
   }
-  rt.ar.hr = 0.8 * rt.ar.hr + 0.8 * g();
-  rt.ar.rr = 0.7 * rt.ar.rr + 0.3 * g();
-  rt.ar.temp = 0.9 * rt.ar.temp + 0.012 * g();
-  rt.ar.spo2 = 0.75 * rt.ar.spo2 + 0.25 * g();
-  rt.ar.act = 0.7 * rt.ar.act + 0.35 * g();
-  let state = 'reposo';
-  if (sc.state === 'ejercicio') { state = 'ejercicio'; rt.recoverUntil = t + 45000; }
-  else if (t < rt.recoverUntil) state = 'recuperacion';
-  const act = (state === 'ejercicio' ? 860 : state === 'recuperacion' ? 160 : 70) * Math.exp((state === 'ejercicio' ? 0.22 : 0.45) * rt.ar.act);
-  return { t, state, act,
-    temp: rest.temp + rt.off.temp + rt.ar.temp, hr: rest.hr + rt.off.hr + rt.ar.hr,
-    rr: rest.rr + rt.off.rr + rt.ar.rr, spo2: Math.min(100, rest.spo2 + rt.off.spo2 + rt.ar.spo2) };
+  return out.t == null ? null : out;
 }
-
-/* ===== Detección: límites de seguridad + desviación personal + contexto de actividad ===== */
-function liveConds(a, rt) {
-  const b = rt.buf.slice(-4);
-  const v = { temp: mean(b.map((s) => s.temp)), hr: mean(b.map((s) => s.hr)), rr: mean(b.map((s) => s.rr)), spo2: mean(b.map((s) => s.spo2)) };
-  const st = rt.buf[rt.buf.length - 1].state, ex = st !== 'reposo';
+/* Los valores medidos hoy sustituyen a los del historial de ejemplo */
+function applyMeds(a) {
+  const today = H[a.id].today;
+  for (const m of MEDS[a.id]) {
+    if (dayKey(new Date(m.t)) !== today.key) continue;
+    for (const k of ['temp', 'hr', 'rr', 'spo2']) if (m[k] != null && m.state === 'reposo') today[k] = m[k];
+    if (m.sleepH != null) { today.sleepH = m.sleepH; today.eff = null; today.awak = null; }
+  }
+}
+function addMeasurement(a, vals) {
+  const m = cleanMed({ ...vals, t: Date.now() });
+  if (!m) return false;
+  MEDS[a.id].push(m);
+  if (MEDS[a.id].length > MAX_MED) MEDS[a.id].shift();
+  saveMeds();
+  applyMeds(a);
+  evaluate(a, true);
+  refreshInsights();
+  S.state = computeState(S.profile);
+  bus.emit('tick');
+  return true;
+}
+function deleteMeasurement(a, t) {
+  MEDS[a.id] = MEDS[a.id].filter((m) => m.t !== t);
+  saveMeds();
+  rebuildData();
+  evaluate(a, true);
+  refreshInsights();
+  S.state = computeState(S.profile);
+  bus.emit('tick');
+}
+/* ===== Detección: límites de seguridad + desviación personal + contexto de esfuerzo ===== */
+function liveConds(a, rd) {
+  const v = { temp: rd.temp, hr: rd.hr, rr: rd.rr, spo2: rd.spo2 }, ex = rd.state !== 'reposo';
   const p = personalLimits(a), raw = [];
   const add = (code, level, ind) => raw.push({ code, level, ind, v: v[ind], dom: COND[code].dom });
+  /* Un indicador que el usuario no midió queda undefined y no dispara ninguna condición */
   const tx = ex ? 0.6 : 0;
   if (v.temp >= 39.5) add('fiebre_alta', 'emergency', 'temp');
   else if (v.temp >= 38 + tx) add('fiebre', 'alert', 'temp');
@@ -82,32 +108,40 @@ function liveConds(a, rt) {
   }
   const lv = { temp: 'ok', hr: 'ok', rr: 'ok', spo2: 'ok' };
   raw.forEach((c) => { lv[c.ind] = c.level; });
-  return { conds, lv, v, st };
+  return { conds, lv, v, ex };
 }
 
-function stepAlerts(a, rt, now) {
+/* Evalúa la última medición del usuario. fresh = acaba de escribirla (avisa y abre guías);
+   si no, solo restaura el estado y avanza la cuenta atrás del aviso a la tripulación. */
+function evaluate(a, fresh) {
+  const rt = RT[a.id], now = Date.now();
+  const rd = currentReading(a);
+  rt.reading = rd && now - rd.t < MED_FRESH ? rd : null;
+  rt.last = rt.reading ? liveConds(a, rt.reading) : null;
+  stepAlerts(a, rt, now, fresh);
+}
+function stepAlerts(a, rt, now, fresh) {
   const mine = a.id === S.profile.id;
-  const res = (rt.last = liveConds(a, rt));
   const cur = {};
-  res.conds.forEach((c) => { cur[c.ind] = c; });
+  (rt.last ? rt.last.conds : []).forEach((c) => { cur[c.ind] = c; });
   for (const ind of ['temp', 'hr', 'rr', 'spo2', 'mente']) {
     const c = cur[ind];
     let s = rt.slots[ind];
     if (c) {
-      if (!s) s = rt.slots[ind] = { ind, since: now, hits: 0, miss: 0, raised: 0 };
-      s.hits++; s.miss = 0; s.code = c.code; s.level = c.level; s.dom = c.dom; s.v = c.v;
-      if (s.hits >= 2 && LV[s.level] > s.raised) { s.raised = LV[s.level]; if (mine && rt.ticks > 3) onRaise(s); }
-    } else if (s && ++s.miss >= 2) delete rt.slots[ind];
+      if (!s) s = rt.slots[ind] = { ind, since: now, hits: 2, miss: 0, raised: fresh ? 0 : LV[c.level] };
+      s.code = c.code; s.level = c.level; s.dom = c.dom; s.v = c.v;
+      if (LV[s.level] > s.raised) { s.raised = LV[s.level]; if (mine && fresh) onRaise(s); }
+    } else delete rt.slots[ind];
   }
-  const acute = Object.values(rt.slots).filter((s) => s.hits >= 2 && LV[s.level] >= 2).sort((x, y) => LV[y.level] - LV[x.level]);
+  const acute = Object.values(rt.slots).filter((s) => LV[s.level] >= 2).sort((x, y) => LV[y.level] - LV[x.level]);
   if (acute.length) {
-    if (!rt.ep) rt.ep = { id: uid(), start: now, sent: null, sentLevel: 0, cancelLv: 0, count: null, opened: false };
+    if (!rt.ep) rt.ep = { id: uid(), start: now, sent: null, sentLevel: 0, cancelLv: fresh ? 0 : LV[acute[0].level], count: null, opened: !fresh };
     const ep = rt.ep;
     ep.top = acute[0];
     const lv = LV[ep.top.level];
     if (!ep.sent) {
       if (lv > ep.cancelLv) {
-        if (!ep.count && (lv >= 3 || now - ep.start >= tCont())) ep.count = { reason: lv >= 3 ? 'grave' : 'continua', until: now + T_COUNT };
+        if (!ep.count && lv >= 3) ep.count = { reason: 'grave', until: now + T_COUNT };
         else if (ep.count && lv >= 3) ep.count.reason = 'grave';
       } else ep.count = null;
       if (ep.count && now >= ep.count.until) sendCrewAlert(a, 'auto');
@@ -143,7 +177,7 @@ function sendCrewAlert(a, how) {
   const reason = how === 'manual' ? 'manual' : (ep.count ? ep.count.reason : 'grave');
   const al = { id: 'a' + uid(), from: a.id, level: top.level, dom: c.dom, guide: c.guide, reason, ts: Date.now(), status: 'activa', resolved: null, acks: {},
     title: crewTitle(a, top),
-    detail: c.dom === 'mente' ? 'Señales de ansiedad aguda. Acércate con calma.' : reason === 'continua' ? 'La alerta continúa sin mejorar.' : reason === 'grave' ? 'Emergencia grave detectada por el sensor.' : 'Aviso enviado por el propio tripulante.' };
+    detail: c.dom === 'mente' ? 'Señales de ansiedad aguda. Acércate con calma.' : reason === 'grave' ? 'Emergencia grave según los valores medidos.' : 'Aviso enviado por el propio tripulante.' };
   ep.sent = al.id; ep.sentLevel = LV[top.level]; ep.count = null;
   Store.addAlert(al);
   if (a.id === S.profile.id) notify({ type: 'equipo', level: top.level, title: 'Tripulación avisada', body: 'Tus compañeros recibieron la alerta y los pasos para ayudarte.', act: { kind: 'view', id: 'equipo', label: 'Ver tripulación' } });
@@ -164,17 +198,12 @@ function rebuildChk() {
 }
 const moodOf = (a, d) => { const c = CHK[a.id] && CHK[a.id][d.key]; return c ? c.mood : d.mood; };
 const stressOf = (a, d) => { const c = CHK[a.id] && CHK[a.id][d.key]; return c && c.stress != null ? c.stress : d.stress; };
-const nightOverride = (a) => (SCEN[RT[a.id].scen] || {}).night || null;
 function nightsOf(a, n) {
-  const ds = H[a.id].days.filter((d) => d.sleepH != null).slice(-n).map((d) => d.sleepH);
-  const o = nightOverride(a);
-  if (o && ds.length) ds[ds.length - 1] = o.sleepH;
-  return ds;
+  return H[a.id].days.filter((d) => d.sleepH != null).slice(-n).map((d) => d.sleepH);
 }
 function lastNight(a) {
   const ds = H[a.id].days.filter((d) => d.sleepH != null);
-  const d = ds[ds.length - 1], o = nightOverride(a);
-  return o ? { sleepH: o.sleepH, eff: o.eff, awak: o.awak } : d;
+  return ds[ds.length - 1];
 }
 
 /* ===== Prevención: tendencias de varios días ===== */
@@ -262,7 +291,7 @@ function psych(a, body) {
   add('Pulso en reposo', 'Más alto que tu línea base, sin fiebre', !fever && hrZ > 1.5 ? -clamp((hrZ - 1.5) * 3, 0, 8) : 0);
   add('Malestar físico', 'Tu cuerpo necesita atención y eso también pesa en el ánimo', body.level !== 'ok' ? -4 : 0);
   add('Etapa de la misión', 'Tercer cuarto: la etapa en la que más suele bajar el ánimo', q === 3 ? -5 : 0);
-  add('Ansiedad aguda', 'Señales detectadas ahora por el sensor', acute ? -15 : 0);
+  add('Ansiedad aguda', 'Señales de ansiedad en tus últimas mediciones', acute ? -15 : 0);
   add('Actividades hechas', `${nAct} en las últimas 48 horas`, Math.min(8, nAct * 2));
   add('Bitácora al día', `${nNote} ${nNote === 1 ? 'nota' : 'notas'} en las últimas 48 horas`, Math.min(4, nNote * 2));
   const index = Math.round(clamp(100 + drivers.reduce((s, d) => s + d.pts, 0), 5, 100));
@@ -354,9 +383,9 @@ function buildPlan(a, st) {
 const SCHED = { nextAct: 0, nextChk: 0 };
 const FIRST = { amara: 'flor', lucas: 'pelicula', kenji: 'lectura', valentina: 'cancion' };
 const planNow = () => buildPlan(S.profile, S.state || computeState(S.profile));
-const actEvery = () => (settings.demo ? 90000 : settings.freq === 'plan' ? Math.round((16 * 3600e3) / planNow().actsDay) : Number(settings.freq) * 60000);
-const chkEvery = () => (settings.demo ? 240000 : Math.round((16 * 3600e3) / planNow().chkDay));
-function schedReset() { const now = Date.now(); SCHED.nextAct = now + (settings.demo ? 25000 : actEvery()); SCHED.nextChk = now + (settings.demo ? 150000 : chkEvery()); }
+const actEvery = () => (settings.freq === 'plan' ? Math.round((16 * 3600e3) / planNow().actsDay) : Number(settings.freq) * 60000);
+const chkEvery = () => Math.round((16 * 3600e3) / planNow().chkDay);
+function schedReset() { const now = Date.now(); SCHED.nextAct = now + actEvery(); SCHED.nextChk = now + chkEvery(); }
 function schedTick(now) {
   if (RT[S.profile.id].ep) return;
   if (now >= SCHED.nextAct) { SCHED.nextAct = now + actEvery(); remindActivity(); }
@@ -516,25 +545,19 @@ const Store = {
 
 /* ===== Arranque de datos y ciclo ===== */
 function rebuildData() {
-  CREW.forEach((a) => { H[a.id] = buildHistory(a); });
+  CREW.forEach((a) => { H[a.id] = buildHistory(a); applyMeds(a); });
   CREW.forEach((a) => { M[a.id] = trainModel(a, settings.train); });
 }
 function initEngine() {
   rebuildData();
-  CREW.forEach((a) => { RT[a.id] = newRuntime(a); });
+  CREW.forEach((a) => { RT[a.id] = newRuntime(a); evaluate(a, false); });
   rebuildChk();
   refreshInsights();
 }
 function tickAll() {
   const now = Date.now();
   if (dayKey(new Date()) !== H[CREW[0].id].today.key) { rebuildData(); refreshInsights(); }
-  for (const a of CREW) {
-    const rt = RT[a.id];
-    rt.ticks++;
-    rt.buf.push(sample(a, rt, now));
-    if (rt.buf.length > BUF) rt.buf.shift();
-    stepAlerts(a, rt, now);
-  }
+  for (const a of CREW) evaluate(a, false);
   S.tickN++;
   if (S.tickN % 30 === 0) refreshInsights();
   S.state = computeState(S.profile);

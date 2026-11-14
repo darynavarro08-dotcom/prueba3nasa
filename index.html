@@ -38,8 +38,7 @@
         </a>
         <p class="mision" id="mision"></p>
         <span class="grow"></span>
-        <span class="scen-chip" id="scen-chip" hidden></span>
-        <button class="chip-btn" id="sim-btn" data-act="sim-toggle" aria-expanded="false" aria-controls="sim"></button>
+        <button class="chip-btn" id="med-btn" data-act="med-open"></button>
         <button class="icon-btn" id="bell-btn" data-act="bell" aria-label="Notificaciones" aria-expanded="false" aria-controls="bell-pop"></button>
         <button class="btn btn-crit btn-sm" data-act="sos" aria-label="Pedir ayuda o ver guías de emergencia">SOS</button>
       </div>
@@ -47,13 +46,12 @@
     <div class="wrap" id="alerts-slot" aria-live="assertive"></div>
     <main class="wrap" id="view" tabindex="-1"></main>
     <footer class="wrap foot">
-      <p>Prototipo educativo con datos simulados de un sensor de actigrafía y signos vitales. No es un dispositivo médico y no sustituye el protocolo médico de la misión ni la indicación del médico de vuelo.</p>
+      <p>Prototipo educativo. Los valores de salud los anota cada persona con sus propias mediciones. No es un dispositivo médico y no sustituye el protocolo médico de la misión ni la indicación del médico de vuelo.</p>
     </footer>
   </div>
 </div>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 <div class="pop" id="bell-pop" hidden></div>
-<aside class="sim" id="sim" hidden aria-label="Simulador de demostración"></aside>
 <dialog class="sheet" id="sheet" aria-labelledby="sheet-title"></dialog>
 <script src="js/01-core.js"></script>
 <script src="js/02-content.js"></script>

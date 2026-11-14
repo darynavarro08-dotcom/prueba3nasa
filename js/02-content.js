@@ -52,7 +52,7 @@ const COND = {
   febricula: cnd('cuerpo', 'fiebre', 'temperatura algo elevada', '°C', 1, 'Todavía no es fiebre. Descansa, bebe agua y vuelve a medir en un rato.'),
   temp_desv: cnd('cuerpo', 'fiebre', 'temperatura sobre tu rango habitual', '°C', 1, 'Es un valor normal para la mayoría, pero alto para ti.'),
   hipotermia: cnd('cuerpo', 'frio', 'temperatura muy baja', '°C', 1, 'Tu cuerpo está perdiendo demasiado calor. Sigue la guía ahora.'),
-  temp_baja: cnd('cuerpo', 'frio', 'temperatura baja', '°C', 1, 'Revisa el sensor y abrígate.'),
+  temp_baja: cnd('cuerpo', 'frio', 'temperatura baja', '°C', 1, 'Repite la medición con tu termómetro y abrígate.'),
   taqui_grave: cnd('cuerpo', 'taquicardia', 'pulso muy acelerado en reposo', 'lpm', 0, 'Tu corazón late muy rápido sin esfuerzo. Detente y sigue la guía ahora.'),
   taqui: cnd('cuerpo', 'taquicardia', 'pulso acelerado en reposo', 'lpm', 0, 'Tu corazón late rápido sin que te estés moviendo. Detente y respira despacio.'),
   hr_alta: cnd('cuerpo', 'taquicardia', 'pulso algo elevado en reposo', 'lpm', 0, 'Haz una pausa, bebe agua y vuelve a medir.'),
@@ -64,10 +64,10 @@ const COND = {
   rr_alta: cnd('cuerpo', 'respiracion', 'respiración algo rápida', 'rpm', 0, 'Haz una pausa y respira despacio.'),
   rr_desv: cnd('cuerpo', 'respiracion', 'respiración sobre tu rango habitual', 'rpm', 0, 'Es un valor normal en general, pero alto para ti.'),
   bradipnea_grave: cnd('cuerpo', 'respiracion_lenta', 'respiración muy lenta', 'rpm', 0, 'Respiras demasiado despacio. Sigue la guía ahora.'),
-  bradipnea: cnd('cuerpo', 'respiracion_lenta', 'respiración lenta', 'rpm', 0, 'Respira hondo varias veces y revisa el sensor.'),
+  bradipnea: cnd('cuerpo', 'respiracion_lenta', 'respiración lenta', 'rpm', 0, 'Respira hondo varias veces y repite la medición.'),
   hipoxia_grave: cnd('cuerpo', 'oxigeno', 'oxígeno muy bajo', '%', 0, 'Tu sangre lleva muy poco oxígeno. Sigue la guía ahora.'),
   hipoxia: cnd('cuerpo', 'oxigeno', 'oxígeno bajo', '%', 0, 'Tu saturación bajó de 91 %. Detén el esfuerzo y sigue la guía.'),
-  spo2_baja: cnd('cuerpo', 'oxigeno', 'oxígeno algo bajo', '%', 0, 'Revisa el sensor, respira hondo y vuelve a medir.'),
+  spo2_baja: cnd('cuerpo', 'oxigeno', 'oxígeno algo bajo', '%', 0, 'Revisa cómo mediste, respira hondo y vuelve a medir.'),
   spo2_desv: cnd('cuerpo', 'oxigeno', 'oxígeno por debajo de tu rango habitual', '%', 0, 'Es un valor aceptable en general, pero bajo para ti.'),
   ansiedad: cnd('mente', 'ansiedad', 'señales de ansiedad aguda', '', 0, 'Tu pulso y tu respiración se aceleraron sin esfuerzo ni fiebre. Puede ser ansiedad o estrés intenso: respira conmigo.'),
 };
@@ -75,26 +75,13 @@ const condVal = (code, v) => { const c = COND[code]; return c.u ? `${fx(v, c.dec
 const condTitle = (code, v) => { const c = COND[code]; return c.u ? `${cap(c.n)}: ${condVal(code, v)}` : cap(c.n); };
 const condInline = (code, v) => { const c = COND[code]; return c.u ? `${c.n} (${condVal(code, v)})` : c.n; };
 
-/* ===== Escenarios del simulador ===== */
-const SCEN = {
-  normal: { label: 'Todo normal', desc: 'Los valores habituales de este tripulante.' },
-  fiebre: { label: 'Fiebre', desc: 'La temperatura sube a 38.6 °C. Verás la alerta y la guía. Si continúa, se avisa a la tripulación.', abs: { temp: 38.6 }, d: { hr: 14, rr: 3.5 } },
-  fiebre_alta: { label: 'Fiebre alta', desc: 'Sube a 39.8 °C: emergencia grave con aviso inmediato a la tripulación.', abs: { temp: 39.8 }, d: { hr: 26, rr: 6 } },
-  hipoxia: { label: 'Oxígeno bajo', desc: 'La saturación baja a 89 %.', abs: { spo2: 89 }, d: { hr: 10, rr: 4.5 } },
-  hipoxia_grave: { label: 'Oxígeno muy bajo', desc: 'Baja a 83 %: emergencia grave.', abs: { spo2: 83 }, d: { hr: 22, rr: 8 } },
-  taquicardia: { label: 'Pulso acelerado en reposo', desc: 'El pulso sube a 127 lpm sin ejercicio.', abs: { hr: 127 }, d: { rr: 2 } },
-  ansiedad: { label: 'Crisis de ansiedad', desc: 'Pulso de 114 y respiración de 26 sin fiebre ni esfuerzo: alerta psicológica con guía de respiración.', abs: { hr: 114, rr: 26 }, d: {} },
-  ejercicio: { label: 'Sesión de ejercicio', desc: 'Pulso de 142 con mucho movimiento. No hay alerta: la actigrafía indica que es ejercicio.', abs: { hr: 142, rr: 31 }, d: { temp: 0.3 }, state: 'ejercicio' },
-  mala_noche: { label: 'Mala noche', desc: 'Anoche solo se registraron 3.4 h de sueño. Cambian la prevención y el plan de cuidado.', night: { sleepH: 3.4, eff: 61, awak: 7 } },
-};
-
 /* ===== Guías de emergencia ===== */
 const GUIDES = {
   fiebre: { dom: 'cuerpo', ic: 'thermo', title: 'Fiebre o temperatura alta', when: 'Temperatura de 38 °C o más. Atención desde 37.5 °C.',
     what: 'Tu cuerpo está más caliente de lo normal. Casi siempre es su forma de defenderse de una infección.',
     steps: [
       ['Para y descansa', 'Deja la tarea, ve a tu camarote o a una zona ventilada y di que te retiras.'],
-      ['Confirma la medición', 'Revisa que el sensor esté bien colocado y mira si el valor se mantiene 5 minutos.'],
+      ['Confirma la medición', 'Revisa que tu instrumento esté bien colocado, mide de nuevo a los 5 minutos y anota el nuevo valor.'],
       ['Bebe agua', 'Un vaso (250 ml) cada hora. Con fiebre te deshidratas más rápido.'],
       ['Refréscate sin frío extremo', 'Quítate capas de ropa y ponte un paño húmedo y tibio en la frente y el cuello.'],
       ['Habla con el oficial médico', 'Te dirá si conviene tomar el antitérmico del botiquín y cada cuánto.'],
@@ -105,9 +92,9 @@ const GUIDES = {
     avoid: ['Hacer ejercicio o seguir con trabajo físico.', 'Usar paños helados o abrigarte de más.', 'Tomar medicamentos sin que lo sepa el oficial médico.'],
     helper: ['Acompaña a la persona a su camarote y llévale agua.', 'Mide su temperatura cada 30 minutos y anótala.', 'Informa a control de misión en la próxima ventana de comunicación.'] },
   frio: { dom: 'cuerpo', ic: 'thermo', title: 'Temperatura corporal baja', when: 'Temperatura por debajo de 35.5 °C.',
-    what: 'Tu cuerpo pierde calor más rápido de lo que lo produce. A veces es solo el sensor mal colocado o una zona fría de la nave.',
+    what: 'Tu cuerpo pierde calor más rápido de lo que lo produce. A veces es solo una medición mal hecha o una zona fría de la nave.',
     steps: [
-      ['Revisa el sensor', 'Colócalo bien pegado a la piel y espera 3 minutos.'],
+      ['Repite la medición', 'Coloca bien el termómetro y espera 3 minutos antes de volver a medir.'],
       ['Abrígate', 'Ropa seca, gorro y la manta térmica del botiquín.'],
       ['Toma algo caliente y dulce', 'Solo si estás bien despierto y puedes tragar sin problema.'],
       ['Muévete suave', 'Mueve brazos y piernas sin llegar a sudar.'],
@@ -135,7 +122,7 @@ const GUIDES = {
     steps: [
       ['Fíjate en cómo te sientes', 'Si estás bien y sin mareo, puede ser normal en ti.'],
       ['Actívate un minuto', 'Mueve brazos y piernas y mira si el pulso sube.'],
-      ['Revisa el sensor', 'Un sensor suelto puede saltarse latidos.'],
+      ['Repite la medición', 'Cuenta el pulso un minuto completo, quieto y sentado.'],
       ['Piensa en los medicamentos', 'Anota si tomaste algo para dormir, para el dolor o para la presión.'],
       ['Si notas síntomas, avisa', 'Mareo, debilidad o falta de aire: llama al oficial médico.'],
     ],
@@ -159,7 +146,7 @@ const GUIDES = {
     what: 'Respiras muy despacio. Puede pasar en sueño profundo, con medicamentos para dormir o para el dolor, o si se acumula CO₂ alrededor de tu cara.',
     steps: [
       ['Respira hondo cinco veces', 'Luego muévete un poco para activarte.'],
-      ['Revisa el sensor', 'Comprueba que la banda no esté floja.'],
+      ['Repite la medición', 'Cuenta el pulso un minuto completo, quieto y sentado.'],
       ['Mira tu oxígeno en sangre', 'Si baja de 94 %, abre la guía de oxígeno bajo.'],
       ['Revisa la ventilación', 'Sin corriente de aire, el CO₂ que exhalas se queda alrededor de tu cabeza. Comprueba que el ventilador del camarote funciona.'],
       ['Piensa en los medicamentos', 'Si tomaste algo para dormir o para el dolor, díselo al oficial médico.'],
@@ -168,10 +155,10 @@ const GUIDES = {
     avoid: ['Volver a dormir sin revisar la ventilación.', 'Tomar otra dosis de un medicamento para dormir.'],
     helper: ['Háblale fuerte y tócale el hombro para despertarla.', 'Si no responde: abre la vía aérea, comprueba si respira y pide ayuda.', 'Prepara oxígeno y sigue el entrenamiento de primeros auxilios.'] },
   oxigeno: { dom: 'cuerpo', ic: 'drop', title: 'Oxígeno bajo en sangre', when: 'Saturación de 90 % o menos. Atención desde 94 %.',
-    what: 'Tu sangre lleva menos oxígeno del que necesita. Puede ser un problema de respiración, del aire de la cabina o solo una mala lectura del sensor.',
+    what: 'Tu sangre lleva menos oxígeno del que necesita. Puede ser un problema de respiración, del aire de la cabina o solo una mala lectura del oxímetro.',
     steps: [
       ['Detén todo esfuerzo', 'Quédate quieto, erguido y con el pecho abierto.'],
-      ['Revisa el sensor', 'Los dedos fríos o un sensor movido dan lecturas bajas. Colócalo bien y espera un minuto.'],
+      ['Repite la medición', 'Los dedos fríos o un oxímetro mal puesto dan lecturas bajas. Colócalo bien, espera un minuto y vuelve a medir.'],
       ['Respira lento y profundo', 'Inhala por la nariz y exhala despacio con los labios fruncidos.'],
       ['Revisa el aire de la cabina', 'Mira el O₂ y el CO₂ en el panel ambiental. Si hay alarma de atmósfera, sigue ese procedimiento y usa la mascarilla de oxígeno portátil.'],
       ['Avisa si no mejora', 'Si sigues por debajo de 90 % después de 3 minutos, llama a la tripulación. El oficial médico puede indicar oxígeno suplementario.'],

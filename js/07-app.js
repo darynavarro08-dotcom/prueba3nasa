@@ -153,9 +153,9 @@ function deleteProfile() {
 function openWelcome() {
   LS.set('sh.bienvenida.v1', 1);
   openSheet('welcome', { ic: 'star', title: 'Bienvenido a Stellar Health',
-    body: `<p><b>Salud más allá de la Tierra.</b> Stellar Health sigue tu cuerpo y tu ánimo con los datos del sensor de actigrafía, te avisa antes de que algo se convierta en problema y te dice qué hacer si ocurre.</p>
-      <div class="box"><h3>Para empezar</h3>${bullets(['Crea tu perfil con tu edad, peso, estatura, sexo e historial médico.', 'O explora con la tripulación de ejemplo y el panel Demo para simular alertas.'])}</div>
-      <p class="hint">Es un prototipo educativo con datos simulados. No sustituye al médico de vuelo.</p>`,
+    body: `<p><b>Salud más allá de la Tierra.</b> Stellar Health sigue tu cuerpo y tu ánimo con los valores que tú mides y anotas, te avisa antes de que algo se convierta en problema y te dice qué hacer si ocurre.</p>
+      <div class="box"><h3>Para empezar</h3>${bullets(['Crea tu perfil con tu edad, peso, estatura, sexo e historial médico.', 'Mide tu temperatura, pulso, respiración u oxígeno con tus propios instrumentos y escríbelos en «Registrar medición».'])}</div>
+      <p class="hint">Es un prototipo educativo. No sustituye al médico de vuelo.</p>`,
     foot: `${footClose('Explorar con la tripulación de ejemplo')}<button class="btn btn-primary" data-act="ficha-new">${icon('user')}Crear mi perfil</button>` });
 }
 
@@ -248,7 +248,7 @@ function applyProfile(c) {
   S.state = computeState(c);
   setSuggestion(startSuggestion());
   schedReset();
-  renderWho(); renderSim(); renderBell();
+  renderWho(); renderBell();
   closeSheet();
   renderView();
 }
@@ -307,21 +307,30 @@ const ACT = {
     killToast(el.dataset.id);
     saveCheckin(v, null, '');
   },
-  'sim-toggle': () => {
-    const s = $('#sim'), open = s.hidden;
-    s.hidden = !open;
-    $('#sim-btn').setAttribute('aria-expanded', String(open));
-  },
-  scen: (el) => {
-    RT[me()].scen = el.dataset.id;
-    refreshInsights();
-    S.state = computeState(S.profile);
-    renderSim();
+  'med-open': () => openMedicion(),
+  'med-state': (el) => { S.medState = el.dataset.k; $$('[data-act="med-state"]').forEach((b) => b.setAttribute('aria-checked', String(b === el))); },
+  'med-save': () => {
+    const vals = {};
+    for (const [k, label] of MED_FIELDS) {
+      const raw = String($('#m-' + k).value).trim().replace(',', '.');
+      if (!raw) continue;
+      const v = Number(raw), [lo, hi] = MED_LIMITS[k];
+      if (!isFinite(v) || v < lo || v > hi) return setText('#m-err', `Revisa «${label}»: debe estar entre ${lo} y ${hi}.`);
+      vals[k] = v;
+    }
+    if (!Object.keys(vals).length) return setText('#m-err', 'Escribe al menos un valor.');
+    const a = S.profile;
+    vals.state = S.medState;
+    if (!addMeasurement(a, vals)) return setText('#m-err', 'No se pudo guardar la medición.');
+    closeSheet();
+    notify({ type: 'sistema', level: 'ok', title: 'Medición guardada', body: 'Stellar Health actualizó tu estado con los valores que anotaste.' });
     renderView();
   },
-  'send-act': () => remindActivity(),
-  'send-check': () => remindCheckin(),
-
+  'med-del': (el) => {
+    deleteMeasurement(S.profile, Number(el.dataset.t));
+    setHtml('#med-list', medListHtml());
+    renderView();
+  },
   ack: (el) => {
     const al = Store.alerts.find((x) => x.id === el.dataset.id);
     if (al) Store.updateAlert(al.id, { acks: { ...al.acks, [me()]: Date.now() } });
@@ -392,11 +401,9 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
   const pop = $('#bell-pop');
   if (!pop.hidden) { pop.hidden = true; $('#bell-btn').setAttribute('aria-expanded', 'false'); $('#bell-btn').focus(); }
-  else if (!$('#sim').hidden) { $('#sim').hidden = true; $('#sim-btn').setAttribute('aria-expanded', 'false'); $('#sim-btn').focus(); }
 });
 document.addEventListener('change', (ev) => {
-  if (ev.target.id === 'demo-on') { settings.demo = ev.target.checked; saveSettings(); schedReset(); if (S.view === 'mente') setText('#rem-info', remInfoText()); }
-  else if (ev.target.id === 'freq') { settings.freq = ev.target.value; saveSettings(); schedReset(); setText('#rem-info', remInfoText()); }
+  if (ev.target.id === 'freq') { settings.freq = ev.target.value; saveSettings(); schedReset(); setText('#rem-info', remInfoText()); }
 });
 sheetEl().addEventListener('close', () => { if (sheetEl().open) return; S.sheet = null; stopBreath(); });
 
