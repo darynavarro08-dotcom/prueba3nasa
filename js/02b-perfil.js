@@ -1,23 +1,23 @@
-/* ===== Perfil y ficha de salud =====
-   Edad, peso, estatura, sexo e historial médico de cada tripulante. Se guardan en este dispositivo
-   y se usan para ajustar los umbrales, las guías y el plan de cuidado. También permite crear perfiles nuevos. */
+/* ===== Profile and health record =====
+   Age, weight, height, sex, and medical history for each crew member. Stored on this device
+   and used to adjust thresholds, guides, and the care plan. Also allows creating new profiles. */
 const K_FICHA = 'sh.fichas.v1', K_CUSTOM = 'sh.tripulantes.v1';
 
 const HX = [
-  { k: 'asma', label: 'Asma o problemas respiratorios', guides: ['respiracion', 'respiracion_lenta', 'oxigeno'], tip: 'Tu ficha indica un problema respiratorio: si tienes tu medicación de rescate en el botiquín, úsala según te indicaron y avisa al oficial médico sin esperar.' },
-  { k: 'hipertension', label: 'Hipertensión', guides: ['taquicardia'], tip: 'Tu ficha indica hipertensión: avisa al oficial médico antes si el pulso no baja, aunque te sientas bien.' },
-  { k: 'cardiopatia', label: 'Problema del corazón', guides: ['taquicardia', 'bradicardia'], tip: 'Tu ficha indica un antecedente cardíaco: no esperes a ver si pasa. Avisa al oficial médico desde el principio.' },
-  { k: 'diabetes', label: 'Diabetes', guides: ['fiebre', 'sueno'], tip: 'Tu ficha indica diabetes: la fiebre y la falta de sueño alteran la glucosa. Mídela con más frecuencia.' },
-  { k: 'alergias', label: 'Alergias', guides: ['respiracion', 'oxigeno'], tip: 'Tu ficha indica alergias: revisa si pudo haber un desencadenante (alimento, polvo, un producto nuevo) y cuéntaselo al oficial médico.' },
-  { k: 'migrana', label: 'Migrañas', guides: ['fiebre', 'sueno'], tip: 'Tu ficha indica migrañas: la falta de sueño y la deshidratación son desencadenantes frecuentes. Cuídalos hoy.' },
-  { k: 'ansiedad', label: 'Ansiedad o ataques de pánico', guides: ['ansiedad', 'animo'], tip: 'Tu ficha indica ansiedad previa: usa las técnicas que ya te han funcionado y no esperes para hablar con alguien.' },
-  { k: 'depresion', label: 'Depresión', guides: ['animo'], tip: 'Tu ficha indica depresión previa: si el ánimo baja varios días seguidos, habla con el psicólogo de misión cuanto antes.' },
-  { k: 'insomnio', label: 'Problemas de sueño', guides: ['sueno'], tip: 'Tu ficha indica problemas de sueño: mantén horarios fijos y avisa si pasan varias noches seguidas durmiendo mal.' },
-  { k: 'espalda', label: 'Dolor de espalda o lesiones', guides: [], tip: '' },
+  { k: 'asma', label: 'Asthma or breathing problems', guides: ['respiracion', 'respiracion_lenta', 'oxigeno'], tip: 'Your health record notes a breathing problem: if you have rescue medication in the medical kit, use it as directed and tell the Medical Officer right away.' },
+  { k: 'hipertension', label: 'High blood pressure', guides: ['taquicardia'], tip: 'Your health record notes high blood pressure: tell the Medical Officer early if your heart rate doesn\'t come down, even if you feel fine.' },
+  { k: 'cardiopatia', label: 'Heart condition', guides: ['taquicardia', 'bradicardia'], tip: 'Your health record notes a heart condition: don\'t wait to see if it passes. Tell the Medical Officer from the start.' },
+  { k: 'diabetes', label: 'Diabetes', guides: ['fiebre', 'sueno'], tip: 'Your health record notes diabetes: fever and lack of sleep affect glucose. Check it more often.' },
+  { k: 'alergias', label: 'Allergies', guides: ['respiracion', 'oxigeno'], tip: 'Your health record notes allergies: check for a possible trigger (food, dust, a new product) and tell the Medical Officer.' },
+  { k: 'migrana', label: 'Migraines', guides: ['fiebre', 'sueno'], tip: 'Your health record notes migraines: lack of sleep and dehydration are common triggers. Take care of both today.' },
+  { k: 'ansiedad', label: 'Anxiety or panic attacks', guides: ['ansiedad', 'animo'], tip: 'Your health record notes prior anxiety: use the techniques that have worked for you before, and don\'t wait to talk to someone.' },
+  { k: 'depresion', label: 'Depression', guides: ['animo'], tip: 'Your health record notes prior depression: if your mood stays low for several days in a row, talk to the mission psychologist as soon as possible.' },
+  { k: 'insomnio', label: 'Sleep problems', guides: ['sueno'], tip: 'Your health record notes sleep problems: keep a regular schedule and speak up if you sleep badly several nights in a row.' },
+  { k: 'espalda', label: 'Back pain or injuries', guides: [], tip: '' },
 ];
 const HX_BY = Object.fromEntries(HX.map((h) => [h.k, h]));
-const LIKES = [['dibujo', 'Dibujo'], ['música', 'Música'], ['plantas', 'Plantas'], ['lectura', 'Lectura'], ['ajedrez', 'Juegos'], ['fotografía', 'Fotografía'], ['cocina', 'Cocina'], ['ejercicio', 'Ejercicio'], ['cine', 'Cine'], ['escritura', 'Escritura']];
-const SEXES = [['f', 'Femenino'], ['m', 'Masculino'], ['o', 'Otro / prefiero no decirlo']];
+const LIKES = [['dibujo', 'Drawing'], ['música', 'Music'], ['plantas', 'Plants'], ['lectura', 'Reading'], ['ajedrez', 'Games'], ['fotografía', 'Photography'], ['cocina', 'Cooking'], ['ejercicio', 'Exercise'], ['cine', 'Movies'], ['escritura', 'Writing']];
+const SEXES = [['f', 'Female'], ['m', 'Male'], ['o', 'Other / prefer not to say']];
 
 const FICHA_DEF = {
   amara: { age: 34, weight: 62, height: 168, sex: 'f', hx: ['alergias'], note: '' },
@@ -39,14 +39,14 @@ function cleanFicha(f) {
   };
 }
 
-/* Tripulantes creados por el usuario: se añaden a CREW antes de que arranque el motor */
+/* User-created crew members: added to CREW before the engine starts */
 function cleanCustom(arr) {
   if (!Array.isArray(arr)) return [];
   return arr.slice(0, 6).map((c) => {
     if (!c || typeof c !== 'object' || !/^c[a-z0-9]{4,20}$/.test(c.id || '') || typeof c.name !== 'string' || !c.name.trim() || !c.base) return null;
     const b = c.base, nb = (v, a, z, d) => num(v, a, z) ?? d;
     const name = c.name.trim().slice(0, 40);
-    return { id: c.id, name, short: name.split(/\s+/)[0], role: typeof c.role === 'string' && c.role.trim() ? c.role.trim().slice(0, 40) : 'Tripulante',
+    return { id: c.id, name, short: name.split(/\s+/)[0], role: typeof c.role === 'string' && c.role.trim() ? c.role.trim().slice(0, 40) : 'Crew Member',
       ini: name.split(/\s+/).slice(0, 2).map((w) => w[0].toUpperCase()).join(''), story: 'estable', need: 7.5, exAt: 1000, custom: true,
       base: { temp: nb(b.temp, 35, 38, 36.6), hr: nb(b.hr, 40, 90, 62), rr: nb(b.rr, 8, 20, 14), spo2: nb(b.spo2, 93, 100, 98), sleep: nb(b.sleep, 5, 9, 7.5), mood: nb(b.mood, 1, 5, 4), stress: nb(b.stress, 1, 5, 2.2) }, likes: [] };
   }).filter(Boolean);
@@ -63,19 +63,19 @@ const ficha = (a) => FICHAS[a.id];
 const saveFichas = () => LS.set(K_FICHA, FICHAS);
 const bmi = (f) => f.weight / ((f.height / 100) ** 2);
 const hasHx = (a, k) => ficha(a).hx.includes(k);
-/* Pulso máximo estimado por edad: sirve para decidir cuándo un pulso alto durante el ejercicio ya es demasiado */
+/* Age-estimated max heart rate: used to decide when a high heart rate during exercise is too high */
 const hrCeil = (a) => clamp(220 - ficha(a).age + 5, 150, 200);
 const hxTips = (a, guideId) => ficha(a).hx.map((k) => HX_BY[k]).filter((h) => h && h.tip && h.guides.includes(guideId)).map((h) => h.tip);
 
 function hxFocos(a) {
   const out = [];
-  if (hasHx(a, 'ansiedad')) out.push({ id: 'hx-ansiedad', cats: ['calma'], title: 'Cuidar tu ansiedad', why: 'Tu ficha indica ansiedad previa. En una misión larga puede reaparecer, sobre todo con poco sueño.',
-    todo: ['Practica respiración lenta una vez al día, aunque estés tranquilo.', 'Si notas que sube la tensión, dilo pronto a alguien de confianza.'] });
-  if (hasHx(a, 'depresion')) out.push({ id: 'hx-depresion', cats: ['conectar', 'sentido'], title: 'Cuidar tu ánimo según tu historial', why: 'Tu ficha indica depresión previa. Por eso vigilamos con más atención los cambios de ánimo.',
-    todo: ['Mantén horarios y una conversación diaria con la tripulación.', 'Si el ánimo está bajo varios días seguidos, pide una conferencia con el psicólogo de misión.'] });
-  if (hasHx(a, 'insomnio')) out.push({ id: 'hx-insomnio', cats: ['calma'], title: 'Proteger tu sueño', why: 'Tu ficha indica problemas de sueño previos.',
-    todo: ['Horario de dormir fijo y luz tenue por la noche.', 'Evita pantallas y cafeína en las últimas horas del día.'] });
-  if (hasHx(a, 'espalda')) out.push({ id: 'hx-espalda', cats: ['mover'], title: 'Cuidar tu espalda', why: 'Tu ficha indica dolor de espalda o lesiones previas. En microgravedad la columna se alarga y puede doler más.',
-    todo: ['Estiramientos suaves de espalda dos veces al día.', 'Avisa si el dolor aumenta o baja a las piernas.'] });
+  if (hasHx(a, 'ansiedad')) out.push({ id: 'hx-ansiedad', cats: ['calma'], title: 'Look after your anxiety', why: 'Your health record notes prior anxiety. On a long mission it can come back, especially with little sleep.',
+    todo: ['Practice slow breathing once a day, even when you feel calm.', 'If you notice tension rising, tell someone you trust early.'] });
+  if (hasHx(a, 'depresion')) out.push({ id: 'hx-depresion', cats: ['conectar', 'sentido'], title: 'Look after your mood, given your history', why: 'Your health record notes prior depression, so we watch mood changes more closely.',
+    todo: ['Keep a routine and talk with the crew every day.', 'If your mood stays low for several days in a row, request a call with the mission psychologist.'] });
+  if (hasHx(a, 'insomnio')) out.push({ id: 'hx-insomnio', cats: ['calma'], title: 'Protect your sleep', why: 'Your health record notes prior sleep problems.',
+    todo: ['Keep a fixed bedtime and dim the lights at night.', 'Avoid screens and caffeine in the last hours of the day.'] });
+  if (hasHx(a, 'espalda')) out.push({ id: 'hx-espalda', cats: ['mover'], title: 'Look after your back', why: 'Your health record notes back pain or prior injuries. In microgravity the spine lengthens and can hurt more.',
+    todo: ['Gentle back stretches twice a day.', 'Tell someone if the pain increases or spreads down your legs.'] });
   return out.slice(0, 2);
 }

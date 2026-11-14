@@ -1,4 +1,4 @@
-/* ===== Utilidades ===== */
+/* ===== Utilities ===== */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -20,8 +20,8 @@ function rng(seed) {
 }
 function gauss(r) { let u = 0, v = 0; while (u === 0) u = r(); while (v === 0) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 
-/* ===== Fechas y números ===== */
-const LOCALE = /^es\b/i.test(navigator.language || '') ? navigator.language : 'es-419';
+/* ===== Dates and numbers ===== */
+const LOCALE = 'en-US';
 const nfmt = (d) => { try { return new Intl.NumberFormat(LOCALE, { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: false }); } catch (e) { return { format: (v) => Number(v).toFixed(d) }; } };
 const NF0 = nfmt(0), NF1 = nfmt(1);
 const f0 = (v) => NF0.format(v);
@@ -42,16 +42,16 @@ const minOfDay = (d) => d.getHours() * 60 + d.getMinutes();
 const hm = (min) => { const m = ((Math.round(min) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
 function ago(ts) {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (s < 50) return 'hace un momento';
-  const m = Math.round(s / 60); if (m < 60) return `hace ${m} min`;
-  const h = Math.round(m / 60); if (h < 24) return `hace ${h} h`;
-  const d = Math.round(h / 24); return d === 1 ? 'ayer' : `hace ${d} días`;
+  if (s < 50) return 'a moment ago';
+  const m = Math.round(s / 60); if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60); if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;
 }
 const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const low = (s) => s.charAt(0).toLowerCase() + s.slice(1);
 
-/* ===== Iconos (trazos de 24 px) ===== */
+/* ===== Icons (24 px strokes) ===== */
 const IC = {
   home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   smile: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/>',
@@ -92,10 +92,15 @@ const IC = {
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
   cloud: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+  radiation: '<circle cx="12" cy="12" r="2"/><path d="M12 10V3.5a8.5 8.5 0 0 1 7.4 4.25L13.7 11"/><path d="M13.7 13l3.7 6.5A8.5 8.5 0 0 1 6.6 19.5L10.3 13"/><path d="M10.3 11L4.6 7.75A8.5 8.5 0 0 1 12 3.5"/>',
+  gauge: '<path d="M12 14l4-5"/><path d="M3.5 18a9.5 9.5 0 1 1 17 0"/>',
+  drop2: '<path d="M12 3c3 4 6 7 6 10.5a6 6 0 0 1-12 0C6 10 9 7 12 3z"/><path d="M9.5 14a2.5 2.5 0 0 0 2.5 2.5"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  dumbbell: '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>',
 };
 const icon = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[n] || ''}</svg>`;
 
-/* ===== Eventos y ajustes locales ===== */
+/* ===== Events and local settings ===== */
 const bus = {
   m: {},
   on(e, f) { (this.m[e] = this.m[e] || []).push(f); },

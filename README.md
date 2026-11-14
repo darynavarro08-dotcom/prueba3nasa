@@ -1,26 +1,28 @@
-# Stellar Health: salud más allá de la Tierra
+# Stellar Health: health beyond Earth
 
-Prototipo web (HTML + CSS + JS, sin dependencias) que vigila el cuerpo y la mente de una tripulación a partir de los valores que cada persona mide por su cuenta y escribe en la app. No hay sensores ni datos en tiempo real.
+Web prototype (HTML + CSS + JS, no dependencies) that monitors the body and mind of a crew based on values each person measures on their own and enters in the app. There are no sensors or real-time data.
 
-## Ejecutar
+## Run
 
 ```sh
 python3 -m http.server 8765
 ```
 
-Abre http://localhost:8765/index.html.
+Open http://localhost:8765/index.html.
 
-## Qué incluye
+## What's included
 
-- **Perfil y ficha de salud**: edad, peso, estatura, sexo e historial médico. Se usan para el pulso máximo en ejercicio, las guías y el plan de cuidado. Permite crear perfiles nuevos.
-- **Indicadores**: temperatura, ritmo cardíaco, respiración, saturación de oxígeno y sueño. Los escribes tú en **Registrar medición**, indicando si estabas en reposo o tras ejercicio.
-- **Prevención**: modelo personal entrenado con el historial; avisa de tendencias antes de que sean un problema.
-- **Alerta y consejo**: alertas al guardar una medición, guías paso a paso y aviso a la tripulación si es grave o continúa.
-- **Plan de cuidado psicológico**, check-ins de ánimo y actividades sencillas periódicas (dibujar una flor, hablar de tu película favorita…).
-- **Bitácora** personal y **archivo de datos** (gráficas, tabla y CSV).
+- **Profile and health record**: age, weight, height, sex, and medical history. Used for maximum exercise heart rate, the guides, and the care plan. You can create new profiles.
+- **Indicators**: temperature, heart rate, blood pressure, oxygen saturation, breathing, blood glucose, radiation, and sleep. You enter them yourself in **Log measurement**, noting whether you were at rest, doing normal activities, or right after exercise. Reference values are adapted to spaceflight (see **Data → Reference values in space**).
+- **Training** page: an editable daily exercise checklist, a stopwatch, and a logbook of the weight used and performance, with a strength trend that flags sustained drops (possible muscle or bone loss). The checklist also appears on Home.
+- **Daily exercise checklist** on Home, and **meditative drawing and sound** activities in Mind.
+- **Prevention**: a personal model trained on your history; it flags trends before they become a problem.
+- **Alerts and advice**: alerts when you save a measurement, step-by-step guides, and crew notification if something is serious or persists.
+- **Psychological care plan**, mood check-ins, and simple periodic activities (drawing a flower, talking about your favorite movie…).
+- A personal **Log** and a **data archive** (charts, table, and CSV).
 
-Datos y entradas se guardan en el `localStorage` del navegador. No es un dispositivo médico.
+Data and entries are saved in the browser's `localStorage`. This is not a medical device.
 
-## Estructura
+## Structure
 
-`index.html`, `styles.css` y `js/` (01 utilidades, 02 contenido, 02b perfil, 03 historial de ejemplo, 04 motor, 05 gráficas, 06 interfaz, 07 acciones y arranque).
+`index.html`, `styles.css`, and `js/` (01 utilities, 02 content, 02b profile, 03 sample history, 04 engine, 05 charts, 06 interface, 07 actions and startup).

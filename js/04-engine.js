@@ -1,4 +1,4 @@
-/* ===== Estado ===== */
+/* ===== State ===== */
 const H = {}, M = {}, RT = {}, INS = {}, CHK = {};
 const S = {
   profile: crewById(settings.profile) || CREW[0], view: 'inicio', state: null, sheet: null, tickN: 0,
@@ -8,16 +8,17 @@ const S = {
 const TICK = 2000, T_COUNT = 10000, MAX_MED = 200, MED_FRESH = 12 * 3600e3;
 const isRestTime = () => { const m = minOfDay(new Date()); return m >= 1335 || m < 360; };
 
-/* ===== Mediciones escritas por el usuario =====
-   Cada tripulante anota los valores que midió por su cuenta. Se guardan en este dispositivo. */
+/* ===== Measurements entered by the user =====
+   Each crew member records the values they measured themselves. They are saved on this device. */
 const K_MED = 'sh.mediciones.v1';
-const MED_LIMITS = { temp: [30, 43], hr: [20, 250], rr: [4, 80], spo2: [50, 100], sleepH: [0, 16] };
-const MED_STATES = { reposo: 'En reposo', ejercicio: 'Justo después de hacer ejercicio' };
+const MED_LIMITS = { temp: [30, 43], hr: [20, 250], rr: [4, 80], spo2: [50, 100], sys: [60, 260], dia: [30, 160], glu: [20, 600], rad: [0, 5000], sleepH: [0, 16] };
+const MED_KEYS = ['temp', 'hr', 'rr', 'spo2', 'sys', 'dia', 'glu', 'rad'];
 function cleanMed(m) {
   if (!m || typeof m !== 'object' || !isFinite(m.t)) return null;
-  const out = { t: m.t, state: m.state === 'ejercicio' ? 'ejercicio' : 'reposo' };
+  const out = { t: m.t, state: m.state === 'ejercicio' || m.state === 'activity' ? m.state : 'reposo' };
   for (const k of Object.keys(MED_LIMITS)) out[k] = num(m[k], ...MED_LIMITS[k]);
-  return ['temp', 'hr', 'rr', 'spo2', 'sleepH'].some((k) => out[k] != null) ? out : null;
+  if (out.sys == null || out.dia == null || out.dia >= out.sys) out.sys = out.dia = null;
+  return [...MED_KEYS, 'sleepH'].some((k) => out[k] != null) ? out : null;
 }
 function loadMeds() {
   const saved = LS.get(K_MED, {}) || {}, out = {};
@@ -29,21 +30,21 @@ const saveMeds = () => LS.set(K_MED, MEDS);
 function newRuntime(a) {
   return { slots: {}, ep: null, last: null, reading: null, readingAt: null };
 }
-/* Lo último que midió el usuario para cada indicador (cada medición puede traer solo algunos) */
+/* The latest value the user measured for each indicator (a measurement may include only some) */
 function currentReading(a) {
   const out = { t: null, state: 'reposo' };
   for (const m of MEDS[a.id].slice().reverse()) {
     if (out.t == null) { out.t = m.t; out.state = m.state; }
-    for (const k of ['temp', 'hr', 'rr', 'spo2']) if (out[k] == null && m[k] != null && m.t >= out.t - MED_FRESH) out[k] = m[k];
+    for (const k of MED_KEYS) if (out[k] == null && m[k] != null && m.t >= out.t - MED_FRESH) out[k] = m[k];
   }
   return out.t == null ? null : out;
 }
-/* Los valores medidos hoy sustituyen a los del historial de ejemplo */
+/* Values measured today replace those from the sample history */
 function applyMeds(a) {
   const today = H[a.id].today;
   for (const m of MEDS[a.id]) {
     if (dayKey(new Date(m.t)) !== today.key) continue;
-    for (const k of ['temp', 'hr', 'rr', 'spo2']) if (m[k] != null && m.state === 'reposo') today[k] = m[k];
+    for (const k of MED_KEYS) if (m[k] != null && m.state === 'reposo') today[k] = m[k];
     if (m.sleepH != null) { today.sleepH = m.sleepH; today.eff = null; today.awak = null; }
   }
 }
@@ -69,20 +70,22 @@ function deleteMeasurement(a, t) {
   S.state = computeState(S.profile);
   bus.emit('tick');
 }
-/* ===== Detección: límites de seguridad + desviación personal + contexto de esfuerzo ===== */
+/* ===== Detection: safety limits + personal deviation + exertion context ===== */
 function liveConds(a, rd) {
-  const v = { temp: rd.temp, hr: rd.hr, rr: rd.rr, spo2: rd.spo2 }, ex = rd.state !== 'reposo';
+  const v = { temp: rd.temp, hr: rd.hr, rr: rd.rr, spo2: rd.spo2, sys: rd.sys, dia: rd.dia, glu: rd.glu, rad: rd.rad };
+  const ex = rd.state === 'ejercicio', act = rd.state === 'activity', moving = ex || act;
   const p = personalLimits(a), raw = [];
   const add = (code, level, ind) => raw.push({ code, level, ind, v: v[ind], dom: COND[code].dom });
-  /* Un indicador que el usuario no midió queda undefined y no dispara ninguna condición */
-  const tx = ex ? 0.6 : 0;
+  /* An indicator the user didn't measure stays undefined and triggers no condition */
+  const tx = moving ? 0.6 : 0;
   if (v.temp >= 39.5) add('fiebre_alta', 'emergency', 'temp');
   else if (v.temp >= 38 + tx) add('fiebre', 'alert', 'temp');
-  else if (v.temp >= 37.5 + tx) add('febricula', 'watch', 'temp');
+  else if (v.temp >= 37.3 + tx) add('febricula', 'watch', 'temp');
   else if (v.temp >= p.temp + tx) add('temp_desv', 'watch', 'temp');
   else if (v.temp < 35) add('hipotermia', 'emergency', 'temp');
   else if (v.temp < 35.5) add('temp_baja', 'alert', 'temp');
   if (ex) { if (v.hr >= hrCeil(a)) add('taqui', 'alert', 'hr'); }
+  else if (act) { if (v.hr >= 130) add('taqui', 'alert', 'hr'); else if (v.hr >= 110) add('hr_alta', 'watch', 'hr'); }
   else if (v.hr >= 140) add('taqui_grave', 'emergency', 'hr');
   else if (v.hr >= 120) add('taqui', 'alert', 'hr');
   else if (v.hr >= 100) add('hr_alta', 'watch', 'hr');
@@ -90,29 +93,34 @@ function liveConds(a, rd) {
   else if (v.hr <= 35) add('bradi_grave', 'emergency', 'hr');
   else if (v.hr <= 41) add('bradi', 'alert', 'hr');
   if (ex) { if (v.rr >= 45) add('taquipnea', 'alert', 'rr'); }
+  else if (act) { if (v.rr >= 30) add('taquipnea', 'alert', 'rr'); else if (v.rr >= 26) add('rr_alta', 'watch', 'rr'); }
   else if (v.rr >= 30) add('taquipnea_grave', 'emergency', 'rr');
   else if (v.rr >= 24) add('taquipnea', 'alert', 'rr');
   else if (v.rr >= 21) add('rr_alta', 'watch', 'rr');
   else if (v.rr >= p.rr) add('rr_desv', 'watch', 'rr');
   else if (v.rr <= 7) add('bradipnea_grave', 'emergency', 'rr');
   else if (v.rr <= 9) add('bradipnea', 'alert', 'rr');
-  if (v.spo2 <= 85) add('hipoxia_grave', 'emergency', 'spo2');
-  else if (v.spo2 <= 90) add('hipoxia', 'alert', 'spo2');
-  else if (v.spo2 <= 94) add('spo2_baja', 'watch', 'spo2');
-  else if (v.spo2 <= p.spo2) add('spo2_desv', 'watch', 'spo2');
+  else if (v.rr < 12) add('rr_low', 'watch', 'rr');
+  /* Chronic lung conditions: 92-95 % is expected, so the alert line moves down to 92 */
+  const lungHx = hasHx(a, 'asma');
+  if (v.spo2 < 90) add('hipoxia_grave', 'emergency', 'spo2');
+  else if (v.spo2 < (lungHx ? 92 : 94)) add('hipoxia', 'alert', 'spo2');
+  else if (v.spo2 < 95 && !lungHx) add('spo2_baja', 'watch', 'spo2');
+  else if (!lungHx && v.spo2 <= p.spo2) add('spo2_desv', 'watch', 'spo2');
+  raw.push(...extraConds(v, rd.state));
   let conds = raw;
-  /* Pulso y respiración altos, sin esfuerzo, sin fiebre y con buen oxígeno: patrón de ansiedad */
-  if (!ex && v.hr >= 100 && v.hr < 140 && v.rr >= 22 && v.rr < 30 && v.temp < 37.8 && v.spo2 > 94) {
+  /* High heart rate and breathing, no exertion, no fever, good oxygen: anxiety pattern */
+  if (!moving && v.hr >= 100 && v.hr < 140 && v.rr >= 22 && v.rr < 30 && v.temp < 37.8 && v.spo2 > 94) {
     conds = raw.filter((c) => c.ind !== 'hr' && c.ind !== 'rr');
     conds.push({ code: 'ansiedad', level: 'alert', ind: 'mente', v: v.hr, dom: 'mente' });
   }
-  const lv = { temp: 'ok', hr: 'ok', rr: 'ok', spo2: 'ok' };
+  const lv = { temp: 'ok', hr: 'ok', rr: 'ok', spo2: 'ok', bp: 'ok', glu: 'ok', rad: 'ok' };
   raw.forEach((c) => { lv[c.ind] = c.level; });
   return { conds, lv, v, ex };
 }
 
-/* Evalúa la última medición del usuario. fresh = acaba de escribirla (avisa y abre guías);
-   si no, solo restaura el estado y avanza la cuenta atrás del aviso a la tripulación. */
+/* Evaluates the user's latest measurement. fresh = just entered (notifies and opens guides);
+   otherwise it only restores the state and advances the crew-alert countdown. */
 function evaluate(a, fresh) {
   const rt = RT[a.id], now = Date.now();
   const rd = currentReading(a);
@@ -124,7 +132,7 @@ function stepAlerts(a, rt, now, fresh) {
   const mine = a.id === S.profile.id;
   const cur = {};
   (rt.last ? rt.last.conds : []).forEach((c) => { cur[c.ind] = c; });
-  for (const ind of ['temp', 'hr', 'rr', 'spo2', 'mente']) {
+  for (const ind of ['temp', 'hr', 'rr', 'spo2', 'bp', 'glu', 'rad', 'mente']) {
     const c = cur[ind];
     let s = rt.slots[ind];
     if (c) {
@@ -155,7 +163,7 @@ function stepAlerts(a, rt, now, fresh) {
     rt.ep = null;
     if (ep.sent) Store.updateAlert(ep.sent, { status: 'resuelta', resolved: now });
     if (mine) {
-      notify({ type: 'sistema', level: 'ok', title: 'Tus valores volvieron a la normalidad', body: ep.sent ? 'La alerta a la tripulación quedó marcada como resuelta.' : 'Seguimos vigilando. Anota en la bitácora cómo te sientes.' });
+      notify({ type: 'sistema', level: 'ok', title: 'Your values are back to normal', body: ep.sent ? 'The crew alert has been marked as resolved.' : "We'll keep watching. Note in the Log how you feel." });
       if (S.sheet === 'emer') closeSheet();
     }
   }
@@ -164,12 +172,12 @@ function stepAlerts(a, rt, now, fresh) {
 function onRaise(s) {
   const c = COND[s.code];
   const t = condInline(s.code, s.v);
-  if (s.level === 'watch') notify({ type: 'prevencion', level: 'watch', title: 'Atención: ' + t, body: c.s, act: { kind: 'guide', id: c.guide, label: 'Qué hacer' } });
-  else if (s.level === 'alert') notify({ type: 'alerta', level: 'alert', title: 'Alerta: ' + t, body: c.s, act: { kind: 'guide', id: c.guide, label: 'Ver qué hacer' } });
-  else notify({ type: 'alerta', level: 'emergency', title: 'Emergencia: ' + t, body: c.s, act: { kind: 'emer', label: 'Abrir guía' } }, { toast: false });
+  if (s.level === 'watch') notify({ type: 'prevencion', level: 'watch', title: 'Watch: ' + t, body: c.s, act: { kind: 'guide', id: c.guide, label: 'What to do' } });
+  else if (s.level === 'alert') notify({ type: 'alerta', level: 'alert', title: 'Alert: ' + t, body: c.s, act: { kind: 'guide', id: c.guide, label: 'See what to do' } });
+  else notify({ type: 'alerta', level: 'emergency', title: 'Emergency: ' + t, body: c.s, act: { kind: 'emer', label: 'Open guide' } }, { toast: false });
 }
 
-const crewTitle = (a, top) => (COND[top.code].dom === 'mente' ? `${a.short} necesita compañía` : `${a.short}: ${condInline(top.code, top.v)}`);
+const crewTitle = (a, top) => (COND[top.code].dom === 'mente' ? `${a.short} needs company` : `${a.short}: ${condInline(top.code, top.v)}`);
 function sendCrewAlert(a, how) {
   const rt = RT[a.id], ep = rt.ep;
   if (!ep || ep.sent) return;
@@ -177,13 +185,13 @@ function sendCrewAlert(a, how) {
   const reason = how === 'manual' ? 'manual' : (ep.count ? ep.count.reason : 'grave');
   const al = { id: 'a' + uid(), from: a.id, level: top.level, dom: c.dom, guide: c.guide, reason, ts: Date.now(), status: 'activa', resolved: null, acks: {},
     title: crewTitle(a, top),
-    detail: c.dom === 'mente' ? 'Señales de ansiedad aguda. Acércate con calma.' : reason === 'grave' ? 'Emergencia grave según los valores medidos.' : 'Aviso enviado por el propio tripulante.' };
+    detail: c.dom === 'mente' ? 'Signs of acute anxiety. Approach calmly.' : reason === 'grave' ? 'Severe emergency based on the measured values.' : 'Alert sent by the crew member.' };
   ep.sent = al.id; ep.sentLevel = LV[top.level]; ep.count = null;
   Store.addAlert(al);
-  if (a.id === S.profile.id) notify({ type: 'equipo', level: top.level, title: 'Tripulación avisada', body: 'Tus compañeros recibieron la alerta y los pasos para ayudarte.', act: { kind: 'view', id: 'equipo', label: 'Ver tripulación' } });
+  if (a.id === S.profile.id) notify({ type: 'equipo', level: top.level, title: 'Crew notified', body: 'Your crewmates received the alert and the steps to help you.', act: { kind: 'view', id: 'equipo', label: 'View crew' } });
 }
 
-/* ===== Registros de ánimo del usuario ===== */
+/* ===== User mood records ===== */
 function rebuildChk() {
   for (const k of Object.keys(CHK)) delete CHK[k];
   for (const e of Store.entries) {
@@ -206,7 +214,7 @@ function lastNight(a) {
   return ds[ds.length - 1];
 }
 
-/* ===== Prevención: tendencias de varios días ===== */
+/* ===== Prevention: multi-day trends ===== */
 function buildInsights(a) {
   const days = H[a.id].days, st = M[a.id].stats, out = [];
   const lastN = (k, n) => days.slice(-n).map((d) => d[k]).filter((v) => v != null);
@@ -216,56 +224,64 @@ function buildInsights(a) {
   for (let i = days.length - 1; i >= 0 && days[i].temp - st.temp.mean >= 0.2; i--) up++;
   if (tS >= 0.06 && tD >= 0.3 && up >= 2) {
     const withHr = hS >= 0.8 && hD >= 4;
-    const eta = tNow < 37.5 ? Math.ceil((37.5 - tNow) / tS) : 0;
+    const eta = tNow < 37.3 ? Math.ceil((37.3 - tNow) / tS) : 0;
     out.push({ id: 'tend_temp', dom: 'cuerpo', level: 'watch', ic: 'thermo', guide: 'fiebre',
-      title: `Tu temperatura lleva ${up} días subiendo`,
-      text: `Está ${f1(tD)} °C por encima de tu línea base de ${f1(st.temp.mean)} °C` + (withHr ? ` y tu pulso en reposo subió ${f0(hD)} lpm. Juntas, estas señales pueden aparecer uno o dos días antes de que notes una infección.` : '.') + (eta >= 1 && eta <= 4 ? ` Si sigue así, llegarías a 37.5 °C en ${eta === 1 ? 'un día' : eta + ' días'}.` : ''),
-      tip: 'Bebe más agua, baja la intensidad del ejercicio hoy y coméntalo con el oficial médico.' });
+      title: `Your temperature has been rising for ${up} days`,
+      text: `It's ${f1(tD)} °C above your baseline of ${f1(st.temp.mean)} °C` + (withHr ? ` and your resting heart rate is up ${f0(hD)} bpm. Together, these signs can appear a day or two before you notice an infection.` : '.') + (eta >= 1 && eta <= 4 ? ` If it keeps up, you'd reach 37.3 °C in ${eta === 1 ? 'one day' : eta + ' days'}.` : ''),
+      tip: 'Drink more water, lower your exercise intensity today and tell the Medical Officer.' });
   } else if (hS >= 1 && hD >= 6) {
-    out.push({ id: 'tend_hr', dom: 'cuerpo', level: 'watch', ic: 'heart', guide: 'taquicardia', title: 'Tu pulso en reposo va en aumento',
-      text: `Está ${f0(hD)} lpm por encima de tu línea base de ${f0(st.hr.mean)} lpm. Suele subir con poco sueño, estrés, falta de líquidos o al inicio de una infección.`,
-      tip: 'Hidrátate, cuida el sueño de esta noche y mira cómo evoluciona mañana.' });
+    out.push({ id: 'tend_hr', dom: 'cuerpo', level: 'watch', ic: 'heart', guide: 'taquicardia', title: 'Your resting heart rate is climbing',
+      text: `It's ${f0(hD)} bpm above your baseline of ${f0(st.hr.mean)} bpm. It often rises with little sleep, stress, dehydration or at the start of an infection.`,
+      tip: 'Hydrate, protect your sleep tonight and see how it changes tomorrow.' });
   }
   const s3 = mean(lastN('spo2', 3));
-  if (st.spo2.mean - s3 >= 1.2) out.push({ id: 'tend_spo2', dom: 'cuerpo', level: 'watch', ic: 'drop', guide: 'oxigeno', title: 'Tu oxígeno en sangre viene bajando',
-    text: `Media de ${f1(s3)} % en tres días, frente a tu línea base de ${f1(st.spo2.mean)} %.`, tip: 'Revisa cómo llevas el sensor y la calidad del aire donde trabajas y duermes.' });
+  if (st.spo2.mean - s3 >= 1.2) out.push({ id: 'tend_spo2', dom: 'cuerpo', level: 'watch', ic: 'drop', guide: 'oxigeno', title: 'Your blood oxygen has been dropping',
+    text: `Average of ${f1(s3)} % over three days, versus your baseline of ${f1(st.spo2.mean)} %.`, tip: 'Check how you wear the sensor and the air quality where you work and sleep.' });
+  const sys3 = mean(lastN('sys', 3)), dia3 = mean(lastN('dia', 3));
+  if (sys3 - st.sys.mean >= 8 && sys3 >= 115) out.push({ id: 'tend_bp', dom: 'cuerpo', level: 'watch', ic: 'gauge', guide: 'bp_high', title: 'Your blood pressure is trending up',
+    text: `Average of ${f0(sys3)}/${f0(dia3)} mmHg over three days, against your baseline of ${f0(st.sys.mean)}/${f0(st.dia.mean)}. In space it can shift a little with fluids, stress, salt and sleep.`,
+    tip: 'Rest before measuring, drink water, limit salt and caffeine, and tell the Medical Officer if it keeps rising.' });
+  const rad3 = mean(lastN('rad', 3));
+  if (rad3 >= 1.5 * st.rad.mean && rad3 >= 40) out.push({ id: 'tend_rad', dom: 'cuerpo', level: 'watch', ic: 'radiation', guide: 'radiation', title: 'Your radiation dose rate is above usual',
+    text: `Average of ${f0(rad3)} µSv/h over three days, against your baseline of ${f0(st.rad.mean)} µSv/h.`,
+    tip: 'Spend more time in the best-protected module and check the radiation report from Mission Control.' });
   const ns = nightsOf(a, 5), ln = ns[ns.length - 1], debt = ns.reduce((s, v) => s + Math.max(0, a.need - v), 0), avg3 = mean(ns.slice(-3));
   const sl = { id: 'sueno', dom: 'cuerpo', ic: 'moon', guide: 'sueno' };
-  if (debt >= 9 || avg3 < 5.2) out.push({ ...sl, level: 'alert', share: true, title: `Deuda de sueño: te faltan ${f1(debt)} h en 5 noches`,
-    text: `Dormiste ${f1(avg3)} h de media las últimas 3 noches y tu cuerpo necesita unas ${f1(a.need)} h. Con tan poco sueño bajan la atención y el ánimo, y los errores son más fáciles.`,
-    tip: 'Esta noche acuéstate 45 minutos antes y avisa al comandante si mañana tienes una tarea crítica.' });
-  else if (ln < 5) out.push({ ...sl, level: 'watch', title: `Anoche dormiste solo ${f1(ln)} h`, text: 'Una sola noche corta ya afecta la atención y el ánimo del día siguiente.',
-    tip: 'Evita tareas de precisión en las primeras horas y, si puedes, haz una siesta de 20 minutos antes de las 15:00.' });
-  else if (debt >= 5 || avg3 < 6) out.push({ ...sl, level: 'watch', title: 'Estás durmiendo menos de lo que necesitas',
-    text: `Te faltan ${f1(debt)} h de sueño en 5 noches. Tu media reciente es de ${f1(avg3)} h y necesitas unas ${f1(a.need)} h.`, tip: 'Adelanta 30 minutos la hora de acostarte y deja las pantallas antes.' });
+  if (debt >= 9 || avg3 < 5.2) out.push({ ...sl, level: 'alert', share: true, title: `Sleep debt: you're short ${f1(debt)} h over 5 nights`,
+    text: `You averaged ${f1(avg3)} h the last 3 nights and your body needs about ${f1(a.need)} h. With so little sleep, attention and mood drop, and mistakes come easier.`,
+    tip: 'Go to bed 45 minutes earlier tonight and tell the Commander if you have a critical task tomorrow.' });
+  else if (ln < 5) out.push({ ...sl, level: 'watch', title: `You slept only ${f1(ln)} h last night`, text: 'Even a single short night affects attention and mood the next day.',
+    tip: 'Avoid precision tasks in the first hours and, if you can, take a 20-minute nap before 3:00 PM.' });
+  else if (debt >= 5 || avg3 < 6) out.push({ ...sl, level: 'watch', title: "You're sleeping less than you need",
+    text: `You're short ${f1(debt)} h of sleep over 5 nights. Your recent average is ${f1(avg3)} h and you need about ${f1(a.need)} h.`, tip: 'Move your bedtime 30 minutes earlier and put screens away beforehand.' });
   else {
     const e3 = mean(lastN('eff', 3));
-    if (e3 < 80) out.push({ ...sl, id: 'eficiencia', level: 'watch', title: 'Tu sueño está muy interrumpido', text: `Eficiencia media de ${f0(e3)} % en tres noches. Lo esperable es más de 85 %.`, tip: 'Revisa el ruido, la luz y la ventilación de tu camarote.' });
+    if (e3 < 80) out.push({ ...sl, id: 'eficiencia', level: 'watch', title: 'Your sleep is very fragmented', text: `Average efficiency of ${f0(e3)} % over three nights. Above 85 % is expected.`, tip: 'Check the noise, light and ventilation in your crew quarters.' });
   }
   const past = days.filter((d) => d.off >= 1);
   const exAvg = mean(past.slice(-3).map((d) => d.exMin));
-  if (exAvg < 0.72 * st.exMin.mean) out.push({ id: 'ejercicio', dom: 'cuerpo', level: 'watch', ic: 'zap', title: 'Te estás moviendo menos',
-    text: `Tu ejercicio bajó a ${f0(exAvg)} min al día y tu media es de ${f0(st.exMin.mean)} min. Moverse menos puede ser señal de cansancio o de desánimo.`, tip: 'Retoma tu sesión completa o divídela en dos partes más cortas.' });
+  if (exAvg < 0.72 * st.exMin.mean) out.push({ id: 'ejercicio', dom: 'cuerpo', level: 'watch', ic: 'zap', title: "You're moving less",
+    text: `Your exercise dropped to ${f0(exAvg)} min a day and your average is ${f0(st.exMin.mean)} min. Moving less can be a sign of fatigue or low mood.`, tip: 'Get back to your full session or split it into two shorter parts.' });
   const tk = CHK[a.id] && CHK[a.id][H[a.id].today.key];
   const moods = past.slice(-6).map((d) => moodOf(a, d));
   if (tk) moods.push(tk.mood);
   const m3 = mean(moods.slice(-3)), mS = slope(moods.slice(-6));
   let lowDays = 0;
   for (let i = moods.length - 1; i >= 0 && moods[i] <= 2.7; i--) lowDays++;
-  if (m3 <= 2.4 && lowDays >= 3) out.push({ id: 'animo', dom: 'mente', level: 'alert', ic: 'smile', guide: 'animo', share: true, title: `Ánimo bajo desde hace ${lowDays} días`,
-    text: `Tus registros de ánimo llevan varios días por debajo de lo habitual en ti. La media reciente es de ${f1(m3)} sobre 5.`, tip: 'Hoy elige una actividad con otra persona y cuéntale a alguien cómo estás.' });
-  else if (m3 <= 3.0 || mS <= -0.2) out.push({ id: 'animo', dom: 'mente', level: 'watch', ic: 'smile', guide: 'animo', title: 'Tu ánimo va a la baja',
-    text: `La media de tus últimos registros es de ${f1(m3)} sobre 5.`, tip: 'Reserva hoy un momento para algo que disfrutes y habla con alguien de la tripulación.' });
+  if (m3 <= 2.4 && lowDays >= 3) out.push({ id: 'animo', dom: 'mente', level: 'alert', ic: 'smile', guide: 'animo', share: true, title: `Low mood for ${lowDays} days`,
+    text: `Your mood records have been below your usual for several days. The recent average is ${f1(m3)} out of 5.`, tip: 'Today pick an activity with someone else and tell someone how you are.' });
+  else if (m3 <= 3.0 || mS <= -0.2) out.push({ id: 'animo', dom: 'mente', level: 'watch', ic: 'smile', guide: 'animo', title: 'Your mood is trending down',
+    text: `The average of your latest records is ${f1(m3)} out of 5.`, tip: 'Set aside a moment today for something you enjoy and talk with someone on the crew.' });
   const str = past.slice(-3).map((d) => stressOf(a, d));
   if (tk && tk.stress != null) str.push(tk.stress);
   const sA = mean(str.slice(-3));
-  if (sA >= 3.7) out.push({ id: 'tension', dom: 'mente', level: 'watch', ic: 'wind', guide: 'ansiedad', title: 'Llevas varios días con mucha tensión',
-    text: `Media de ${f1(sA)} sobre 5 en tus últimos registros.`, tip: 'Haz tres pausas de respiración hoy y revisa tu carga de trabajo con el comandante.' });
+  if (sA >= 3.7) out.push({ id: 'tension', dom: 'mente', level: 'watch', ic: 'wind', guide: 'ansiedad', title: 'You have had high tension for several days',
+    text: `Average of ${f1(sA)} out of 5 in your latest records.`, tip: 'Take three breathing breaks today and review your workload with the Commander.' });
   return out.sort((x, y) => LV[y.level] - LV[x.level]);
 }
 function refreshInsights() { CREW.forEach((a) => { INS[a.id] = buildInsights(a); }); }
 
-/* ===== Bienestar mental: índice explicable ===== */
+/* ===== Mental wellbeing: explainable index ===== */
 function psych(a, body) {
   const days = H[a.id].days, past = days.filter((d) => d.off >= 1), st = M[a.id].stats, today = H[a.id].today;
   const tk = CHK[a.id] && CHK[a.id][today.key];
@@ -284,16 +300,16 @@ function psych(a, body) {
   const acute = Object.values(RT[a.id].slots).some((s) => s.dom === 'mente' && s.hits >= 2);
   const drivers = [];
   const add = (label, detail, pts) => { if (Math.abs(pts) >= 1) drivers.push({ label, detail, pts: Math.round(pts) }); };
-  add('Ánimo', `Media de ${f1(moodAvg)} sobre 5 en tus últimos registros`, -clamp((3.8 - moodAvg) * 14, 0, 38));
-  add('Tendencia del ánimo', 'Ha ido bajando esta semana', mSlope < -0.12 ? -clamp(-mSlope * 30, 0, 8) : 0);
-  add('Sueño', `Te faltan ${f1(debt)} h de sueño en 5 noches`, -clamp(debt * 1.3, 0, 16));
-  add('Tensión', `Media de ${f1(stressAvg)} sobre 5`, -clamp((stressAvg - 2.5) * 8, 0, 16));
-  add('Pulso en reposo', 'Más alto que tu línea base, sin fiebre', !fever && hrZ > 1.5 ? -clamp((hrZ - 1.5) * 3, 0, 8) : 0);
-  add('Malestar físico', 'Tu cuerpo necesita atención y eso también pesa en el ánimo', body.level !== 'ok' ? -4 : 0);
-  add('Etapa de la misión', 'Tercer cuarto: la etapa en la que más suele bajar el ánimo', q === 3 ? -5 : 0);
-  add('Ansiedad aguda', 'Señales de ansiedad en tus últimas mediciones', acute ? -15 : 0);
-  add('Actividades hechas', `${nAct} en las últimas 48 horas`, Math.min(8, nAct * 2));
-  add('Bitácora al día', `${nNote} ${nNote === 1 ? 'nota' : 'notas'} en las últimas 48 horas`, Math.min(4, nNote * 2));
+  add('Mood', `Average of ${f1(moodAvg)} out of 5 in your latest records`, -clamp((3.8 - moodAvg) * 14, 0, 38));
+  add('Mood trend', 'It has been dropping this week', mSlope < -0.12 ? -clamp(-mSlope * 30, 0, 8) : 0);
+  add('Sleep', `You're short ${f1(debt)} h of sleep over 5 nights`, -clamp(debt * 1.3, 0, 16));
+  add('Tension', `Average of ${f1(stressAvg)} out of 5`, -clamp((stressAvg - 2.5) * 8, 0, 16));
+  add('Resting heart rate', 'Higher than your baseline, no fever', !fever && hrZ > 1.5 ? -clamp((hrZ - 1.5) * 3, 0, 8) : 0);
+  add('Physical discomfort', 'Your body needs attention and that also weighs on mood', body.level !== 'ok' ? -4 : 0);
+  add('Mission phase', 'Third quarter: the phase when mood most often dips', q === 3 ? -5 : 0);
+  add('Acute anxiety', 'Signs of anxiety in your latest measurements', acute ? -15 : 0);
+  add('Activities done', `${nAct} in the last 48 hours`, Math.min(8, nAct * 2));
+  add('Log up to date', `${nNote} ${nNote === 1 ? 'note' : 'notes'} in the last 48 hours`, Math.min(4, nNote * 2));
   const index = Math.round(clamp(100 + drivers.reduce((s, d) => s + d.pts, 0), 5, 100));
   drivers.sort((x, y) => x.pts - y.pts);
   return { index, drivers, data: { moodAvg, mSlope, stressAvg, debt, sleep3, hrZ, q, fever } };
@@ -307,38 +323,38 @@ function computeState(a) {
   bC.forEach((c) => { bi -= [0, 12, 35, 60][LV[c.level]]; });
   bI.forEach((i) => { bi -= i.level === 'alert' ? 30 : 12; });
   const body = { level: maxLv([...bC, ...bI]), index: Math.round(clamp(bi, 5, 100)), conds: bC, ins: bI };
-  body.why = bC.length && LV[bC[0].level] >= LV[body.level] ? condTitle(bC[0].code, bC[0].v) : bI.length ? bI[0].title : 'Tus signos vitales están dentro de tu rango habitual.';
+  body.why = bC.length && LV[bC[0].level] >= LV[body.level] ? condTitle(bC[0].code, bC[0].v) : bI.length ? bI[0].title : 'Your vital signs are within your usual range.';
   const p = psych(a, body);
   const mC = slots.filter((s) => s.dom === 'mente'), mI = ins.filter((i) => i.dom === 'mente');
   const idxLv = p.index >= 75 ? 'ok' : p.index >= 50 ? 'watch' : 'alert';
   const mind = { level: maxLv([{ level: idxLv }, ...mC, ...mI]), index: p.index, drivers: p.drivers, data: p.data, conds: mC, ins: mI };
   const top = p.drivers[0];
-  mind.why = mC.length ? 'Señales de ansiedad aguda. Abre la guía y respira conmigo.' : mI.length ? mI[0].title : mind.level === 'ok' ? 'Tu ánimo, tu sueño y tu tensión se mantienen bien.' : top ? `${top.label}: ${low(top.detail)}.` : '';
+  mind.why = mC.length ? 'Signs of acute anxiety. Open the guide and breathe with me.' : mI.length ? mI[0].title : mind.level === 'ok' ? 'Your mood, sleep and tension are holding up well.' : top ? `${top.label}: ${low(top.detail)}.` : '';
   return { body, mind };
 }
 
-/* ===== Plan de cuidado psicológico, generado con las condiciones de cada tripulante ===== */
+/* ===== Psychological care plan, generated from each crew member's conditions ===== */
 function buildPlan(a, st) {
   const d = st.mind.data, lvl = st.mind.level, focos = [];
   const bed = Math.round((375 - (a.need * 60) / 0.9) / 5) * 5;
-  if (d.debt >= 4 || d.sleep3 < 6.3) focos.push({ id: 'sueno', cats: ['calma'], title: 'Recuperar tu sueño',
-    why: `Dormiste ${f1(d.sleep3)} h de media las últimas 3 noches y necesitas unas ${f1(a.need)} h. Acumulas ${f1(d.debt)} h de deuda.`,
-    todo: [`Acuéstate a las ${hm(bed)} toda la semana.`, 'Baja las luces y deja las pantallas 45 minutos antes.', 'Nada de cafeína después del mediodía.', 'Si lo necesitas, siesta de 20 minutos antes de las 15:00.'] });
-  if (d.moodAvg <= 3.2 || d.mSlope < -0.12) focos.push({ id: 'animo', cats: ['conectar', 'crear', 'jugar'], title: 'Levantar el ánimo, poco a poco',
-    why: `Tu ánimo medio reciente es de ${f1(d.moodAvg)} sobre 5${d.mSlope < -0.12 ? ' y ha ido bajando' : ''}.`,
-    todo: ['Una actividad agradable al día. Empieza con 5 minutos, aunque no tengas ganas.', 'Cada día, una conversación que no sea de trabajo.', 'Una videollamada con tu familia esta semana.', 'Luz intensa y ejercicio por la mañana.'] });
-  if (d.stressAvg >= 3.2 || (!d.fever && d.hrZ > 1.8)) focos.push({ id: 'calma', cats: ['calma', 'mover'], title: 'Bajar la tensión',
-    why: `Tu tensión media es de ${f1(d.stressAvg)} sobre 5${!d.fever && d.hrZ > 1.8 ? ' y tu pulso en reposo está por encima de tu línea base' : ''}.`,
-    todo: ['Tres pausas de respiración al día, de 2 minutos.', 'Trabaja en bloques de 45 minutos con 5 de pausa.', 'Si la agenda no cabe en el día, dilo en la reunión de planificación.'] });
-  if (st.body.level !== 'ok' && !focos.some((f) => f.id === 'sueno' && st.body.ins.every((i) => i.id === 'sueno'))) focos.push({ id: 'cuidado', cats: ['calma'], title: 'Cuidarte mientras tu cuerpo se recupera',
-    why: 'Tus signos vitales muestran cambios, y sentirse mal físicamente también afecta el ánimo.',
-    todo: ['Baja el ritmo hoy: cambia el ejercicio intenso por estiramientos.', 'Cuéntale al oficial médico cómo te sientes.', 'Bebe más agua y duerme un poco más de lo habitual.'] });
-  if (d.q === 3) focos.push({ id: 'sentido', cats: ['sentido', 'conectar'], title: 'Cuidar la motivación en el tercer cuarto',
-    why: `Vas por el día ${MISSION.day} de ${MISSION.total}. En misiones largas el ánimo suele bajar justo después de la mitad. Es normal y pasa.`,
-    todo: ['Ponte una meta pequeña para esta semana y celébrala con la tripulación.', 'Escribe en la bitácora por qué esta misión importa para ti.', 'Planea algo que harás al volver a la Tierra.'] });
-  if (focos.length < 2) focos.push({ id: 'mantener', cats: [], title: 'Mantener lo que funciona',
-    why: 'Tus indicadores están estables. El objetivo es conservar tus rutinas.',
-    todo: ['Sigue con tus 2 horas de ejercicio diario.', 'Mantén tu horario de sueño.', 'Una actividad agradable al día.'] });
+  if (d.debt >= 4 || d.sleep3 < 6.3) focos.push({ id: 'sueno', cats: ['calma'], title: 'Recover your sleep',
+    why: `You averaged ${f1(d.sleep3)} h the last 3 nights and need about ${f1(a.need)} h. You've built up ${f1(d.debt)} h of debt.`,
+    todo: [`Go to bed at ${hm(bed)} all week.`, 'Dim the lights and put screens away 45 minutes before.', 'No caffeine after noon.', 'If needed, a 20-minute nap before 3:00 PM.'] });
+  if (d.moodAvg <= 3.2 || d.mSlope < -0.12) focos.push({ id: 'animo', cats: ['conectar', 'crear', 'jugar'], title: 'Lift your mood, little by little',
+    why: `Your recent average mood is ${f1(d.moodAvg)} out of 5${d.mSlope < -0.12 ? ' and has been dropping' : ''}.`,
+    todo: ['One enjoyable activity a day. Start with 5 minutes, even if you don\'t feel like it.', 'One non-work conversation every day.', 'A video call with your family this week.', 'Bright light and exercise in the morning.'] });
+  if (d.stressAvg >= 3.2 || (!d.fever && d.hrZ > 1.8)) focos.push({ id: 'calma', cats: ['calma', 'mover'], title: 'Lower your tension',
+    why: `Your average tension is ${f1(d.stressAvg)} out of 5${!d.fever && d.hrZ > 1.8 ? ' and your resting heart rate is above your baseline' : ''}.`,
+    todo: ['Three 2-minute breathing breaks a day.', 'Work in 45-minute blocks with 5-minute breaks.', "If the schedule doesn't fit the day, say so in the planning meeting."] });
+  if (st.body.level !== 'ok' && !focos.some((f) => f.id === 'sueno' && st.body.ins.every((i) => i.id === 'sueno'))) focos.push({ id: 'cuidado', cats: ['calma'], title: 'Take care while your body recovers',
+    why: 'Your vital signs show changes, and feeling unwell physically also affects mood.',
+    todo: ['Slow down today: swap intense exercise for stretching.', 'Tell the Medical Officer how you feel.', 'Drink more water and sleep a bit more than usual.'] });
+  if (d.q === 3) focos.push({ id: 'sentido', cats: ['sentido', 'conectar'], title: 'Protect your motivation in the third quarter',
+    why: `You're on day ${MISSION.day} of ${MISSION.total}. On long missions mood often dips just past the halfway point. It's normal and it passes.`,
+    todo: ['Set a small goal for this week and celebrate it with the crew.', 'Write in the Log why this mission matters to you.', "Plan something to do when you're back on Earth."] });
+  if (focos.length < 2) focos.push({ id: 'mantener', cats: [], title: 'Keep doing what works',
+    why: 'Your indicators are stable. The goal is to keep your routines.',
+    todo: ['Keep up your 2 hours of daily exercise.', 'Keep your sleep schedule.', 'One enjoyable activity a day.'] });
   hxFocos(a).forEach((f) => focos.push(f));
   const chkDay = lvl === 'ok' ? 2 : lvl === 'watch' ? 3 : 4;
   const actsDay = lvl === 'ok' ? 2 : 3;
@@ -360,26 +376,26 @@ function buildPlan(a, st) {
   const semana = [];
   for (let i = 0; i < 7; i++) {
     const date = addDays(today, i), dow = date.getDay(), items = [];
-    if (hasSleep) items.push([420, 'Luz intensa y 10 minutos de movimiento al despertar']);
+    if (hasSleep) items.push([420, 'Bright light and 10 minutes of movement after waking']);
     times.forEach((t) => items.push([t, draw().t]));
-    if (i === ppc) items.push([960, 'Conferencia privada con el psicólogo de misión']);
-    if (dow === 6 || (hasMood && i === 2)) items.push([1080, 'Videollamada con tu familia']);
-    if (dow === 5) items.push([1200, 'Cena de toda la tripulación']);
-    if (hasSleep) items.push([bed + 1440 - 45, 'Rutina para dormir: luces bajas, sin pantallas']);
+    if (i === ppc) items.push([960, 'Private conference with the mission psychologist']);
+    if (dow === 6 || (hasMood && i === 2)) items.push([1080, 'Video call with your family']);
+    if (dow === 5) items.push([1200, 'Whole-crew dinner']);
+    if (hasSleep) items.push([bed + 1440 - 45, 'Bedtime routine: dim lights, no screens']);
     items.sort((x, y) => x[0] - y[0]);
     semana.push({ date, items });
   }
-  const medic = CREW.find((c) => c.role === 'Oficial médico'), cmd = CREW.find((c) => c.role === 'Comandante');
+  const medic = CREW.find((c) => c.role === 'Medical Officer'), cmd = CREW.find((c) => c.role === 'Commander');
   const apoyo = [
-    a.id === medic.id ? ['Médico de vuelo en tierra', 'te atiende en la conferencia médica privada.'] : [`${medic.name}, oficial médico`, 'tu primer contacto a bordo para cualquier malestar.'],
-    a.id === cmd.id ? ['Director de vuelo en tierra', 'para ajustar tu carga de trabajo.'] : [`${cmd.name}, comandante`, 'puede ajustar tu agenda si la carga es demasiada.'],
-    ['Psicólogo de misión', ppc >= 0 ? 'tu conferencia privada se adelanta a esta semana. Es confidencial.' : 'conferencia privada cada dos semanas. Es confidencial.'],
-    ['Tu familia', 'videollamada semanal y mensajes en cada ventana de comunicación.'],
+    a.id === medic.id ? ['Flight surgeon on the ground', 'sees you in the private medical conference.'] : [`${medic.name}, Medical Officer`, 'your first contact on board for any discomfort.'],
+    a.id === cmd.id ? ['Flight director on the ground', 'to adjust your workload.'] : [`${cmd.name}, Commander`, 'can adjust your schedule if the load is too much.'],
+    ['Mission psychologist', ppc >= 0 ? 'your private conference is moved up to this week. It is confidential.' : 'private conference every two weeks. It is confidential.'],
+    ['Your family', 'weekly video call and messages in every communication window.'],
   ];
   return { focos, chkDay, actsDay, semana, apoyo, w, at: Date.now() };
 }
 
-/* ===== Recordatorios periódicos de salud mental ===== */
+/* ===== Periodic mental health reminders ===== */
 const SCHED = { nextAct: 0, nextChk: 0 };
 const FIRST = { amara: 'flor', lucas: 'pelicula', kenji: 'lectura', valentina: 'cancion' };
 const planNow = () => buildPlan(S.profile, S.state || computeState(S.profile));
@@ -409,11 +425,11 @@ function setSuggestion(x) {
 function remindActivity() {
   const x = pickSuggestion(S.suggestion);
   setSuggestion(x);
-  notify({ type: 'actividad', level: 'ok', title: 'Un momento para ti: ' + low(x.t), body: x.d, actId: x.id });
+  notify({ type: 'actividad', level: 'ok', title: 'A moment for you: ' + low(x.t), body: x.d, actId: x.id });
 }
-function remindCheckin() { notify({ type: 'checkin', level: 'ok', title: '¿Cómo te sientes ahora?', body: 'Toca la cara que mejor te describe. Tarda dos segundos.', faces: true }); }
+function remindCheckin() { notify({ type: 'checkin', level: 'ok', title: 'How do you feel right now?', body: 'Tap the face that best describes you. It takes two seconds.', faces: true }); }
 
-/* ===== Notificaciones ===== */
+/* ===== Notifications ===== */
 const NOTES = [];
 function notify(n, opt = {}) {
   const note = { id: uid(), ts: Date.now(), read: false, ...n };
@@ -423,7 +439,7 @@ function notify(n, opt = {}) {
   return note;
 }
 
-/* ===== Almacenamiento: nube privada por cuenta si está disponible; si no, este dispositivo ===== */
+/* ===== Storage: private cloud per account if available; otherwise this device ===== */
 const K_ENT = 'sh.bitacora.v1', K_ALR = 'sh.alertas.v1';
 const CREW_IDS = new Set(CREW.map((c) => c.id));
 const sstr = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
@@ -463,7 +479,7 @@ const Store = {
   loadLocal() { this._l.entries = cleanEntries(LS.get(K_ENT, [])); this._l.alerts = cleanAlerts(LS.get(K_ALR, [])); },
   saveLocal() {
     const ok = LS.set(K_ENT, this._l.entries.map(strip)) && LS.set(K_ALR, this._l.alerts.map(strip));
-    if (!ok) notify({ type: 'sistema', level: 'watch', title: 'No se pudo guardar en este dispositivo', body: 'El navegador no permite guardar o no queda espacio. La entrada seguirá visible hasta que cierres la página.' });
+    if (!ok) notify({ type: 'sistema', level: 'watch', title: "Couldn't save on this device", body: "The browser won't allow saving or there's no space left. The entry will stay visible until you close the page." });
   },
   merge() {
     const ce = new Set(this._c.entries.map((e) => e.id)), ca = new Set(this._c.alerts.map((e) => e.id));
@@ -512,7 +528,7 @@ const Store = {
   async delEntry(id) {
     const e = this.entries.find((x) => x.id === id);
     if (!e) return;
-    if (e.where === 'nube') { try { await this.entRef().doc(id).delete(); } catch (err) { notify({ type: 'sistema', level: 'watch', title: 'No se pudo borrar la entrada', body: 'Inténtalo de nuevo en un momento.' }); } return; }
+    if (e.where === 'nube') { try { await this.entRef().doc(id).delete(); } catch (err) { notify({ type: 'sistema', level: 'watch', title: "Couldn't delete the entry", body: 'Try again in a moment.' }); } return; }
     this._l.entries = this._l.entries.filter((x) => x.id !== id);
     this.saveLocal(); this.merge();
   },
@@ -527,7 +543,7 @@ const Store = {
     const al = this.alerts.find((x) => x.id === id);
     if (!al) return;
     if (al.where === 'nube') {
-      try { await this.db.collection('alertas').doc(id).update(patch); } catch (err) { notify({ type: 'sistema', level: 'watch', title: 'No se pudo actualizar la alerta', body: 'Puede que tu acceso a esta página sea solo de lectura.' }); }
+      try { await this.db.collection('alertas').doc(id).update(patch); } catch (err) { notify({ type: 'sistema', level: 'watch', title: "Couldn't update the alert", body: 'Your access to this page may be read-only.' }); }
       return;
     }
     const i = this._l.alerts.findIndex((x) => x.id === id);
@@ -537,13 +553,13 @@ const Store = {
   },
   async clearResolved() {
     const done = this.alerts.filter((x) => x.status === 'resuelta');
-    for (const x of done.filter((y) => y.where === 'nube')) { try { await this.db.collection('alertas').doc(x.id).delete(); } catch (err) { /* sin permiso: se queda */ } }
+    for (const x of done.filter((y) => y.where === 'nube')) { try { await this.db.collection('alertas').doc(x.id).delete(); } catch (err) { /* no permission: it stays */ } }
     this._l.alerts = this._l.alerts.filter((x) => x.status !== 'resuelta');
     this.saveLocal(); this.merge();
   },
 };
 
-/* ===== Arranque de datos y ciclo ===== */
+/* ===== Data startup and loop ===== */
 function rebuildData() {
   CREW.forEach((a) => { H[a.id] = buildHistory(a); applyMeds(a); });
   CREW.forEach((a) => { M[a.id] = trainModel(a, settings.train); });

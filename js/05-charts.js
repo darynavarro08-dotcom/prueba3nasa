@@ -1,5 +1,5 @@
-/* ===== Gráficas SVG: línea o barras de una sola serie, con banda de rango personal,
-   líneas de referencia, lectura al pasar el cursor y con teclado ===== */
+/* ===== SVG charts: single-series line or bars, with a personal range band,
+   reference lines, and hover and keyboard readout ===== */
 function niceTicks(lo, hi, n) {
   const span = hi - lo || 1, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0))), f = step0 / mag;
   const step = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag, out = [];
@@ -43,7 +43,7 @@ function makeChart(host, cfg) {
     if (cfg.band) {
       const y1 = y(Math.min(hi, cfg.band.hi)), y2 = y(Math.max(lo, cfg.band.lo));
       s += `<rect class="ch-band" x="${m.l}" y="${y1.toFixed(1)}" width="${iw}" height="${Math.max(0, y2 - y1).toFixed(1)}" rx="3"/>`;
-      if (!cfg.compact && y2 - y1 >= 15) s += `<text class="ch-bandl" x="${m.l + 5}" y="${(y1 + 11).toFixed(1)}">tu rango habitual</text>`;
+      if (!cfg.compact && y2 - y1 >= 15) s += `<text class="ch-bandl" x="${m.l + 5}" y="${(y1 + 11).toFixed(1)}">your usual range</text>`;
     }
     (cfg.refs || []).forEach((r) => {
       s += `<line class="ch-ref" x1="${m.l}" x2="${m.l + iw}" y1="${y(r.v).toFixed(1)}" y2="${y(r.v).toFixed(1)}"/>`;
@@ -108,7 +108,7 @@ function makeChart(host, cfg) {
   };
 }
 
-/* ===== Ventana al espacio: aurora sobre el horizonte (decorativa) ===== */
+/* ===== Window to space: aurora over the horizon (decorative) ===== */
 const SKY = { raf: 0, last: 0 };
 function drawSky(cv, t) {
   const w = cv.clientWidth, h = cv.clientHeight;

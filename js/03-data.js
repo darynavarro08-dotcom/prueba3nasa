@@ -1,6 +1,6 @@
-/* ===== Historial simulado del sensor (30 días) =====
-   Para cada día se generan cuentas de actividad por minuto (actigrafía) y, a partir de ellas,
-   se calcula el sueño con una puntuación tipo Cole-Kripke (ventana de 7 minutos). */
+/* ===== Simulated sensor history (30 days) =====
+   For each day, per-minute activity counts (actigraphy) are generated, and from them
+   sleep is computed with a Cole-Kripke-style score (7-minute window). */
 const HIST = 30;
 
 function makeNight(a, date, off) {
@@ -103,17 +103,17 @@ function buildHistory(a) {
       sleepH, eff: sl ? sl.eff * 100 : null, awak: sl ? sl.awak : null, lat: sl ? sl.lat : null,
       mood: off === 0 ? null : clamp(b.mood + (f.mood || 0) + 0.28 * g() - short * 0.25, 1, 5),
       stress: off === 0 ? null : clamp(b.stress + (f.stress || 0) + 0.32 * g() + short * 0.3, 1, 5),
-      exMin: ex,
+      exMin: ex, ...extraDay(b, g, short),
     });
     prev = ep;
   }
   return { days, today: days[days.length - 1] };
 }
 
-/* ===== Entrenamiento: línea base personal =====
-   El modelo aprende la media y la variación de cada indicador en una ventana de días.
-   'base' deja fuera la última semana para que un cambio reciente no se confunda con lo normal. */
-const MIN_SD = { temp: 0.1, hr: 2, rr: 0.6, spo2: 0.5, sleepH: 0.4, mood: 0.3, exMin: 8 };
+/* ===== Training: personal baseline =====
+   The model learns the mean and variation of each indicator over a window of days.
+   'base' leaves out the last week so a recent change isn't mistaken for normal. */
+const MIN_SD = { temp: 0.1, hr: 2, rr: 0.6, spo2: 0.5, sys: 3, dia: 2.5, glu: 4, rad: 3, sleepH: 0.4, mood: 0.3, exMin: 8 };
 function trainModel(a, mode) {
   const days = H[a.id].days.filter((d) => (mode === 'todo' ? d.off >= 1 : d.off >= 8));
   const stats = {};
@@ -125,11 +125,11 @@ function trainModel(a, mode) {
   return { mode, at: Date.now(), from: days[0].date, to: days[days.length - 1].date, n: days.length, stats };
 }
 
-/* Umbrales personales de "atención": el más sensible entre el límite general y el personal */
+/* Personal "watch" thresholds: the more sensitive of the general and personal limits */
 function personalLimits(a) {
   const s = M[a.id].stats;
   return {
-    temp: Math.min(37.5, s.temp.mean + Math.max(3 * s.temp.sd, 0.4)),
+    temp: Math.min(37.3, s.temp.mean + Math.max(3 * s.temp.sd, 0.4)),
     hr: Math.min(100, s.hr.mean + Math.max(3 * s.hr.sd, 10)),
     rr: Math.min(21, s.rr.mean + Math.max(3 * s.rr.sd, 3.5)),
     spo2: Math.max(94, s.spo2.mean - Math.max(3 * s.spo2.sd, 2.5)),

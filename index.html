@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -10,24 +10,24 @@
 <body>
 <div class="app" id="app">
   <aside class="side">
-    <a class="brand" href="#inicio" aria-label="Stellar Health, ir a inicio">
+    <a class="brand" href="#inicio" aria-label="Stellar Health, go to home">
       <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
         <circle cx="24" cy="24" r="23" fill="var(--space-2)"/>
         <circle cx="24" cy="24" r="19.5" fill="none" stroke="var(--aurora-b)" stroke-width="1.4" stroke-dasharray="2.2 3.2" stroke-linecap="round"/>
         <path d="M8.5 25.5h7.2l3.1-8.6 5 15.6 4.1-10.4 2.2 3.4h9.4" fill="none" stroke="var(--aurora-a)" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M34.5 8.2l1.3 3.2 3.2 1.3-3.2 1.3-1.3 3.2-1.3-3.2-3.2-1.3 3.2-1.3z" fill="var(--star)"/>
       </svg>
-      <span class="brand-t"><strong>Stellar Health</strong><small>Salud más allá de la Tierra</small></span>
+      <span class="brand-t"><strong>Stellar Health</strong><small>Health beyond Earth</small></span>
     </a>
-    <nav class="nav" id="nav" aria-label="Secciones"></nav>
+    <nav class="nav" id="nav" aria-label="Sections"></nav>
     <div class="side-foot">
-      <button class="who" id="who" data-act="perfil" aria-label="Cambiar de tripulante"></button>
+      <button class="who" id="who" data-act="perfil" aria-label="Switch crew member"></button>
     </div>
   </aside>
   <div class="main">
     <header class="topbar">
       <div class="wrap">
-        <a class="brand brand-mini" href="#inicio" aria-label="Stellar Health, ir a inicio">
+        <a class="brand brand-mini" href="#inicio" aria-label="Stellar Health, go to home">
           <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
             <circle cx="24" cy="24" r="23" fill="var(--space-2)"/>
             <circle cx="24" cy="24" r="19.5" fill="none" stroke="var(--aurora-b)" stroke-width="1.4" stroke-dasharray="2.2 3.2" stroke-linecap="round"/>
@@ -39,14 +39,14 @@
         <p class="mision" id="mision"></p>
         <span class="grow"></span>
         <button class="chip-btn" id="med-btn" data-act="med-open"></button>
-        <button class="icon-btn" id="bell-btn" data-act="bell" aria-label="Notificaciones" aria-expanded="false" aria-controls="bell-pop"></button>
-        <button class="btn btn-crit btn-sm" data-act="sos" aria-label="Pedir ayuda o ver guías de emergencia">SOS</button>
+        <button class="icon-btn" id="bell-btn" data-act="bell" aria-label="Notifications" aria-expanded="false" aria-controls="bell-pop"></button>
+        <button class="btn btn-crit btn-sm" data-act="sos" aria-label="Ask for help or view emergency guides">SOS</button>
       </div>
     </header>
     <div class="wrap" id="alerts-slot" aria-live="assertive"></div>
     <main class="wrap" id="view" tabindex="-1"></main>
     <footer class="wrap foot">
-      <p>Prototipo educativo. Los valores de salud los anota cada persona con sus propias mediciones. No es un dispositivo médico y no sustituye el protocolo médico de la misión ni la indicación del médico de vuelo.</p>
+      <p>Educational prototype. Health values are entered by each person from their own measurements. This is not a medical device and does not replace the mission's medical protocol or the flight surgeon's instructions.</p>
     </footer>
   </div>
 </div>
@@ -56,10 +56,12 @@
 <script src="js/01-core.js"></script>
 <script src="js/02-content.js"></script>
 <script src="js/02b-perfil.js"></script>
+<script src="js/02c-extras.js"></script>
 <script src="js/03-data.js"></script>
 <script src="js/04-engine.js"></script>
 <script src="js/05-charts.js"></script>
 <script src="js/06-iu.js"></script>
+<script src="js/06b-entreno.js"></script>
 <script src="js/07-app.js"></script>
 </body>
 </html>
