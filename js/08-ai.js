@@ -21,7 +21,7 @@ function aiContext(a) {
   const ins = [...st.body.ins, ...st.mind.ins].map((i) => ({ level: i.level, what: i.title, detail: i.text }));
   const meas = {};
   if (rd) ['temp', 'hr', 'rr', 'spo2', 'sys', 'dia', 'glu', 'rad'].forEach((k) => { if (rd[k] != null) meas[k] = rd[k]; });
-  return { age: f.age, sex: f.sex, history: f.hx, measurementState: rd ? rd.state : null, measurements: meas,
+  return { dataNote: rd ? 'Measurements are from the last 12 hours.' : 'No measurement in the last 12 hours: vital-sign conditions cannot be assessed. Ask the user to log a measurement, and base advice on insights, mind and training only.', age: f.age, sex: f.sex, history: f.hx, measurementState: rd ? rd.state : null, measurements: meas,
     body: { level: st.body.level, index: st.body.index }, mind: { level: st.mind.level, index: st.mind.index },
     conditions: conds, insights: ins, training: loadTrend(a).filter((x) => x.level !== 'ok').map((x) => ({ exercise: x.name, level: x.level, note: x.note })) };
 }
