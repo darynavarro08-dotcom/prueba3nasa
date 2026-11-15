@@ -21,24 +21,25 @@ function aiContext(a) {
   const ins = [...st.body.ins, ...st.mind.ins].map((i) => ({ level: i.level, what: i.title, detail: i.text }));
   const meas = {};
   if (rd) ['temp', 'hr', 'rr', 'spo2', 'sys', 'dia', 'glu', 'rad'].forEach((k) => { if (rd[k] != null) meas[k] = rd[k]; });
-  return { dataNote: rd ? 'Measurements are from the last 12 hours.' : 'No measurement in the last 12 hours: vital-sign conditions cannot be assessed. Ask the user to log a measurement, and base advice on insights, mind and training only.', age: f.age, sex: f.sex, history: f.hx, measurementState: rd ? rd.state : null, measurements: meas,
+  const base = {};
+  try { const sd = M[a.id].stats; ['temp', 'hr', 'rr', 'spo2', 'sys', 'dia', 'glu', 'rad'].forEach((k) => { if (sd[k]) base[k] = Math.round(sd[k].mean * 10) / 10; }); } catch (e) { /* no baseline yet */ }
+  return { personalBaseline: base, dataNote: rd ? 'Measurements are from the last 12 hours.' : 'No measurement in the last 12 hours: vital-sign conditions cannot be assessed. Ask the user to log a measurement, and base advice on insights, mind and training only.', age: f.age, sex: f.sex, history: f.hx, measurementState: rd ? rd.state : null, measurements: meas,
     body: { level: st.body.level, index: st.body.index }, mind: { level: st.mind.level, index: st.mind.index },
     conditions: conds, insights: ins, training: loadTrend(a).filter((x) => x.level !== 'ok').map((x) => ({ exercise: x.name, level: x.level, note: x.note })) };
 }
-const AI_SYSTEM = `You are the advisor of Stellar Health, a crew health app for astronauts. Follow this priority tree strictly, in this order:
-1. EMERGENCY conditions: tell them to follow the emergency guide now and notify the crew.
-2. ALERT conditions.
-3. WATCH conditions.
-4. Prevention insights and training trends (possible muscle or bone loss).
-5. Mind and well-being.
-Address the highest level present first and mention lower ones only briefly. Never downgrade, dismiss or contradict a level computed by the app. You do not diagnose; for anything serious, direct them to the Medical Officer. If everything is ok, say so and give one small habit tip. Reply in English, in at most 110 words, as a short numbered list of actions in priority order.`;
+const AI_SYSTEM = `You are the medical-support advisor of Stellar Health, an app for astronauts in space. You receive the crew member's readings, personal baselines, history, and the status computed by the app's priority tree (emergency > alert > watch > prevention > mind). Reason over ALL the values together, considering spaceflight effects (fluid shift, radiation, muscle and bone loss, sleep disruption, stress), the measurement state (rest, normal activity, after exercise) and the person's history.
+Reply in English with exactly these three parts, in at most 140 words total, no preamble:
+STATUS: one sentence with the overall health status, matching the highest level computed by the app. Never downgrade or contradict it.
+MOST LIKELY CAUSE: the single most probable reason for any abnormal or off-baseline value, with a brief reason from the data (one or two sentences). Say "likely", not "certainly". If several values point to the same cause, link them.
+WHAT TO DO: 2 to 4 short personalized steps in priority order, using the actual numbers. For emergency or alert, the first step is to follow the emergency guide and notify the crew or Medical Officer.
+If everything is within range, say so, skip the cause, and give one tip based on the weakest area (sleep, training, mood). If there are no recent measurements, say vital signs cannot be assessed and ask for a measurement. This is decision support, not a replacement for the Medical Officer.`;
 
 async function aiAsk(a) {
   const pv = PROVIDERS[AI.provider];
   const r = await fetch(pv.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + aiKey() },
-    body: JSON.stringify({ model: aiModel(), temperature: 0.2, max_tokens: 300,
+    body: JSON.stringify({ model: aiModel(), temperature: 0.2, max_tokens: 380,
       messages: [{ role: 'system', content: AI_SYSTEM }, { role: 'user', content: JSON.stringify(aiContext(a)) }] }),
   });
   if (!r.ok) {
