@@ -30,7 +30,11 @@ async function aiAsk(a) {
     body: JSON.stringify({ model: AI.model, temperature: 0.2, max_tokens: 300,
       messages: [{ role: 'system', content: AI_SYSTEM }, { role: 'user', content: JSON.stringify(aiContext(a)) }] }),
   });
-  if (!r.ok) throw new Error(r.status === 401 ? 'Invalid API key.' : r.status === 429 ? 'Rate limit or no credit on this key.' : 'The AI service returned an error (' + r.status + ').');
+  if (!r.ok) {
+    let m = '';
+    try { m = (await r.json()).error.message; } catch (e) { /* no JSON body */ }
+    throw new Error(`OpenAI error ${r.status}: ${m || 'request failed'}${r.status === 429 ? ' (rate limit or no credit on this key)' : ''}`);
+  }
   const j = await r.json();
   return String(j.choices && j.choices[0] && j.choices[0].message.content || '').trim();
 }
@@ -52,7 +56,7 @@ function aiHtml(a) {
 const viewInicio = VIEWS.inicio;
 VIEWS.inicio = () => viewInicio().replace('<div class="cols">', `<section aria-labelledby="h-ai"><div class="sec-h"><h2 id="h-ai">AI advisor</h2><p class="hint">Uses the priority tree: emergency, alert, watch, prevention, mind</p></div><div id="ai-card">${aiHtml(S.profile)}</div></section>\n  <div class="cols">`);
 Object.assign(ACT, {
-  'ai-save': () => { AI.key = $('#ai-key').value.trim(); AI.model = $('#ai-model').value.trim() || 'gpt-4o-mini'; aiSave(); setHtml('#ai-card', aiHtml(S.profile)); },
+  'ai-save': () => { AI.key = $('#ai-key').value.replace(/\s+/g, ''); AI.model = $('#ai-model').value.trim() || 'gpt-4o-mini'; aiSave(); setHtml('#ai-card', aiHtml(S.profile)); },
   'ai-clear': () => { AI.key = ''; aiSave(); setHtml('#ai-card', aiHtml(S.profile)); },
   'ai-ask': async (el) => {
     const a = S.profile;
