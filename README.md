@@ -57,7 +57,7 @@ Stellar Health addresses these risks by giving the crew total medical self-suffi
 
 <p align="center">
   <a href="https://prueba3nasa.vercel.app/#inicio">
-    <img src="WhatsApp%20Image%202026-11-15%20at%201.09.10%20AM.jpeg" alt="Stellar Health Interface Preview" width="700">
+    <img src="(https://youtu.be/GGPGJZ80UjA)" alt="Stellar Health Nasa Space Apps Challenge 2026" width="700">
   </a>
 </p>
 
