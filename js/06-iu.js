@@ -180,7 +180,7 @@ VIEWS.inicio = () => {
   </section>
   <section aria-labelledby="h-vit">
     <div class="sec-h"><h2 id="h-vit">Your latest measurements</h2><p class="sensor" id="sensor"></p><button class="btn btn-soft btn-sm" data-act="med-open">${icon('plus')}Log measurement</button></div>
-    <div class="vitals">${TILES.map((t) => `<article class="tile"><div class="tile-h"><span class="tile-ic">${icon(t.ic)}</span><h3>${t.name}</h3></div>
+    <div class="vitals">${TILES.map((t) => `<article class="tile"><div class="tile-h"><span class="tile-ic">${icon(t.ic)}</span><h3>${t.name}</h3>${MED_TOOLS[t.k] ? `<button type="button" class="btn btn-ghost btn-sm" style="margin-left:auto" data-act="tool-info" data-k="${t.k}" aria-label="How to measure ${t.name.toLowerCase()}">${icon('info')}</button>` : ''}</div>
       <p class="tile-val"><span class="num" id="tv-${t.k}">–</span><span class="unit">${t.unit}</span><span class="tile-p" id="tp-${t.k}"></span></p>
       <div id="sp-${t.k}"></div><p class="tile-foot" id="tf-${t.k}"></p></article>`).join('')}</div>
   </section>

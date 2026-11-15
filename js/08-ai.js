@@ -23,23 +23,30 @@ function aiContext(a) {
   if (rd) ['temp', 'hr', 'rr', 'spo2', 'sys', 'dia', 'glu', 'rad'].forEach((k) => { if (rd[k] != null) meas[k] = rd[k]; });
   const base = {};
   try { const sd = M[a.id].stats; ['temp', 'hr', 'rr', 'spo2', 'sys', 'dia', 'glu', 'rad'].forEach((k) => { if (sd[k]) base[k] = Math.round(sd[k].mean * 10) / 10; }); } catch (e) { /* no baseline yet */ }
-  return { personalBaseline: base, dataNote: rd ? 'Measurements are from the last 12 hours.' : 'No measurement in the last 12 hours: vital-sign conditions cannot be assessed. Ask the user to log a measurement, and base advice on insights, mind and training only.', age: f.age, sex: f.sex, history: f.hx, measurementState: rd ? rd.state : null, measurements: meas,
+  const disturbed = new Set([...st.body.conds, ...st.mind.conds].filter((c) => c.level !== 'ok').map((c) => c.ind));
+  if (rd) { const lv = RT[a.id].last && RT[a.id].last.lv; if (lv) Object.keys(lv).forEach((k) => { if (lv[k] !== 'ok') disturbed.add(k); }); }
+  if (st.mind.level !== 'ok') disturbed.add('mente');
+  if (loadTrend(a).some((x) => x.level !== 'ok')) disturbed.add('training');
+  const kit = {};
+  disturbed.forEach((k) => { const key = k === 'mente' ? 'mind' : k; if (ISS_KIT[key]) kit[key] = ISS_KIT[key]; });
+  return { disturbed: [...disturbed], issToolsAvailable: kit, personalBaseline: base, dataNote: rd ? 'Measurements are from the last 12 hours.' : 'No measurement in the last 12 hours: vital-sign conditions cannot be assessed. Ask the user to log a measurement, and base advice on insights, mind and training only.', age: f.age, sex: f.sex, history: f.hx, measurementState: rd ? rd.state : null, measurements: meas,
     body: { level: st.body.level, index: st.body.index }, mind: { level: st.mind.level, index: st.mind.index },
     conditions: conds, insights: ins, training: loadTrend(a).filter((x) => x.level !== 'ok').map((x) => ({ exercise: x.name, level: x.level, note: x.note })) };
 }
-const AI_SYSTEM = `You are the medical-support advisor of Stellar Health, an app for astronauts in space. You receive the crew member's readings, personal baselines, history, and the status computed by the app's priority tree (emergency > alert > watch > prevention > mind). Reason over ALL the values together, considering spaceflight effects (fluid shift, radiation, muscle and bone loss, sleep disruption, stress), the measurement state (rest, normal activity, after exercise) and the person's history.
-Reply in English with exactly these three parts, in at most 140 words total, no preamble:
+const AI_SYSTEM = `You are the medical-support advisor of Stellar Health, an app for astronauts aboard the International Space Station. You receive the crew member's readings, personal baselines, history, and the status computed by the app's priority tree (emergency > alert > watch > prevention > mind). Reason over ALL the values together, considering spaceflight effects (fluid shift, radiation, muscle and bone loss, sleep disruption, stress), the measurement state (rest, normal activity, after exercise) and the person's history.
+Reply in English with these parts, in at most 190 words total, no preamble:
 STATUS: one sentence with the overall health status, matching the highest level computed by the app. Never downgrade or contradict it.
-MOST LIKELY CAUSE: the single most probable reason for any abnormal or off-baseline value, with a brief reason from the data (one or two sentences). Say "likely", not "certainly". If several values point to the same cause, link them.
+MOST LIKELY CAUSE: the single most probable reason for any abnormal or off-baseline value, with a brief reason from the data. Say "likely", not "certainly". If several values point to the same cause, link them.
 WHAT TO DO: 2 to 4 short personalized steps in priority order, using the actual numbers. For emergency or alert, the first step is to follow the emergency guide and notify the crew or Medical Officer.
-If everything is within range, say so, skip the cause, and give one tip based on the weakest area (sleep, training, mood). If there are no recent measurements, say vital signs cannot be assessed and ask for a measurement. This is decision support, not a replacement for the Medical Officer.`;
+ISS TOOLS: only if "disturbed" is not empty. Pick 1 to 3 tools ONLY from "issToolsAvailable" that fit this situation and say in one short line each how to use them now (for example, re-measure with the thermometer, then check oxygen with the pulse oximeter). Never invent tools or medications; do not suggest drugs unless the Medical Officer advises it.
+If everything is within range, say so, skip the cause and tools, and give one tip based on the weakest area (sleep, training, mood). If there are no recent measurements, say vital signs cannot be assessed and ask for a measurement. This is decision support, not a replacement for the Medical Officer.`;
 
 async function aiAsk(a) {
   const pv = PROVIDERS[AI.provider];
   const r = await fetch(pv.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + aiKey() },
-    body: JSON.stringify({ model: aiModel(), temperature: 0.2, max_tokens: 380,
+    body: JSON.stringify({ model: aiModel(), temperature: 0.2, max_tokens: 520,
       messages: [{ role: 'system', content: AI_SYSTEM }, { role: 'user', content: JSON.stringify(aiContext(a)) }] }),
   });
   if (!r.ok) {
@@ -85,3 +92,19 @@ document.addEventListener('change', (ev) => {
   AI.provider = ev.target.value; aiSave();
   const d = $('#ai-card details'); setHtml('#ai-card', aiHtml(S.profile)); if (d) $('#ai-card details').open = true;
 });
+
+/* Re-evaluates automatically after each new measurement when something is off and a key is set */
+Object.assign(ACT, { 'tool-info': (el) => toolSheet(el.dataset.k) });
+const evaluateBase = evaluate;
+evaluate = function (a, fresh) {
+  evaluateBase(a, fresh);
+  if (!fresh || !aiKey()) return;
+  setTimeout(async () => {
+    if (a.id !== S.profile.id) return;
+    S.state = computeState(a);
+    const st = S.state, rd = RT[a.id].reading;
+    if (!rd || (st.body.level === 'ok' && st.mind.level === 'ok' && !loadTrend(a).some((x) => x.level !== 'ok'))) return;
+    try { AI_OUT[a.id] = await aiAsk(a); } catch (e) { return; }
+    if (S.view === 'inicio' && a.id === S.profile.id) setHtml('#ai-card', aiHtml(a));
+  }, 400);
+};
