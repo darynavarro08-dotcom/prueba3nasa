@@ -56,7 +56,7 @@ Stellar Health addresses these risks by giving the crew total medical self-suffi
 ## 📹 Video
 
 <p align="center">
-  <a href="https://prueba3nasa.vercel.app/#inicio">
+  <a href="https://youtu.be/GGPGJZ80UjA">
     <img src="(https://youtu.be/GGPGJZ80UjA)" alt="Stellar Health Nasa Space Apps Challenge 2026" width="700">
   </a>
 </p>
