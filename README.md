@@ -57,10 +57,17 @@ Stellar Health addresses these risks by giving the crew total medical self-suffi
 
 <p align="center">
   <a href="https://youtu.be/GGPGJZ80UjA">
-    <img src="(https://youtu.be/GGPGJZ80UjA)" alt="Stellar Health Nasa Space Apps Challenge 2026" width="700">
+    <img src="https://img.youtube.com/vi/HrGC5vgw-mE/0.jpg" alt="Stellar Health Nasa Space Apps Challenge 2026" width="700">
   </a>
 </p>
 
+## Presentación
+
+<p align="center">
+  <a href="https://canva.link/v9jaai8z3lws7qy">
+    <img src="Stellar%20Health%20Orbital%20Logo.png" alt="Stellar Health" width="700">
+  </a>
+</p>
 ---
 
 <a id="sec-run"></a>
