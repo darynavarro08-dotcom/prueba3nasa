@@ -154,6 +154,15 @@ The application interface is divided into 7 main operational modules:
   <img src="WhatsApp%20Image%202026-11-15%20at%201.09.11%20AM%20(5).jpeg" alt="Guides Section" width="700">
 </p>
 
+### 8. AI advisor
+1.- Crea una API KEY para tu modelo de IA ( puede ser de gémini, groq o Open AI )
+
+2.- Copia tu API KEY y pegala en el apartado de IA
+
+3.- Manda una solicitud de prueba para verificar el funcionamiento 
+
+4.- Utiliza esa misma API KEY para el resto de solicitudes
+
 ---
 
 <a id="sec-variables"></a>
