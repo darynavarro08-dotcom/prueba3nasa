@@ -61,7 +61,7 @@ Stellar Health addresses these risks by giving the crew total medical self-suffi
   </a>
 </p>
 
-## Presentación
+## Presentación (Click on the image)
 
 <p align="center">
   <a href="https://canva.link/v9jaai8z3lws7qy">
