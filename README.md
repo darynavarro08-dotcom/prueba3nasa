@@ -27,4 +27,4 @@ Data and entries are saved in the browser's `localStorage`. This is not a medica
 
 `index.html`, `styles.css`, and `js/` (01 utilities, 02 content, 02b profile, 03 sample history, 04 engine, 05 charts, 06 interface, 07 actions and startup).
 
-- **AI advisor** (Home): paste your own OpenAI API key (saved only in your browser). The AI explains what to do first following the priority tree (emergency, alert, watch, prevention, mind); the rule-based levels cannot be changed by it.
+- **AI advisor** (Home): choose Groq or Google Gemini (both have free keys) or OpenAI, and paste your own API key (saved only in your browser). The AI explains what to do first following the priority tree (emergency, alert, watch, prevention, mind); the rule-based levels cannot be changed by it.
